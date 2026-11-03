@@ -1,43 +1,28 @@
-export const ROLES = { USER: 'USER', ADMIN: 'ADMIN', SUPER_ADMIN: 'SUPER_ADMIN' };
-
-export const COOKIE = { REFRESH: 'gh_refresh', CSRF: 'gh_csrf' };
-
-export const CSRF_HEADER = 'x-csrf-token';
-
-export const AUTH = {
-  MAX_FAILED: 5,
-  LOCK_MINUTES: 15,
-  ACCESS_TTL: '15m',
-  REFRESH_DAYS: 7,
-  BCRYPT_ROUNDS: 12,
+export const ROLES = {
+  ADMIN: 'admin',
+  USER: 'user',
 };
 
-export const PAYMENT = { PENDING_TTL_MINUTES: 30, REMINDER_DAYS_BEFORE: 3 };
+export const COOKIE = {
+  NAME: 'auth_token',
+  EXPIRES_IN: '1d',
+};
 
-const ACTION_KEYS = [
-  'REGISTER',
-  'LOGIN_SUCCESS',
-  'LOGIN_FAILED',
-  'LOGIN_LOCKED',
-  'LOGOUT',
-  'TOKEN_REFRESH',
-  'TOKEN_REUSE_DETECTED',
-  'PASSWORD_CHANGED',
-  'PROFILE_UPDATED',
-  'AVATAR_UPDATED',
-  'PAYMENT_REQUESTED',
-  'PAYMENT_SUCCESS',
-  'PAYMENT_FAILED',
-  'PAYMENT_EXPIRED',
-  'SUBSCRIPTION_ACTIVATED',
-  'SUBSCRIPTION_CANCELED',
-  'SUBSCRIPTION_EXPIRED',
-  'ADMIN_USER_UPDATED',
-  'ADMIN_PLAN_CREATED',
-  'ADMIN_PLAN_UPDATED',
-  'ADMIN_PLAN_DELETED',
-];
+export const CSRF_HEADER = 'X-CSRF-Token';
 
-export const AUDIT_ACTIONS = Object.freeze(
-  Object.fromEntries(ACTION_KEYS.map((k) => [k, k]))
-);
+export const AUTH = {
+  JWT_ACCESS_SECRET: 'your_jwt_access_secret',
+  JWT_REFRESH_SECRET: 'your_jwt_refresh_secret',
+};
+
+export const PAYMENT = {
+  STRIPE_SECRET_KEY: 'your_stripe_secret_key',
+  STRIPE_PUBLISHABLE_KEY: 'your_stripe_publishable_key',
+};
+
+export const AUDIT_ACTIONS = {
+  CREATE: 'create',
+  READ: 'read',
+  UPDATE: 'update',
+  DELETE: 'delete',
+};
