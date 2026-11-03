@@ -1,38 +1,28 @@
-import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
-import { env } from '../config/env.js';
-import { AUTH } from '../config/constants.js';
-import { AppError } from './response.util.js';
+import crypto from 'crypto';
 
-export function signAccessToken({ sub, role }) {
-  return jwt.sign({ sub, role }, env.JWT_ACCESS_SECRET, {
-    algorithm: 'HS256',
-    expiresIn: AUTH.ACCESS_TTL,
-  });
+const JWT_SECRET = process.env.JWT_ACCESS_SECRET;
+const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
+
+export function signAccessToken(payload) {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' });
 }
 
 export function verifyAccessToken(token) {
   try {
-    const payload = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: ['HS256'] });
-    if (!payload || typeof payload !== 'object' || !payload.sub) {
-      throw new AppError(401, 'UNAUTHORIZED', 'Invalid token');
-    }
-    return payload;
-  } catch (err) {
-    if (err instanceof AppError) throw err;
-    if (err?.name === 'TokenExpiredError') {
-      throw new AppError(401, 'TOKEN_EXPIRED', 'Access token expired');
-    }
-    throw new AppError(401, 'UNAUTHORIZED', 'Invalid token');
+    return jwt.verify(token, JWT_SECRET);
+  } catch (error) {
+    throw new Error('Invalid access token');
   }
 }
 
-export function hashToken(token) {
-  return crypto.createHash('sha256').update(String(token)).digest('hex');
+export function generateRefreshToken() {
+  const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+  return { token, tokenHash, expiresAt };
 }
 
-export function generateRefreshToken() {
-  const token = crypto.randomBytes(64).toString('hex');
-  const expiresAt = new Date(Date.now() + AUTH.REFRESH_DAYS * 24 * 60 * 60 * 1000);
-  return { token, tokenHash: hashToken(token), expiresAt };
+export function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
