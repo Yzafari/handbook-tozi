@@ -1,40 +1,32 @@
-import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
-import { env } from '../config/env.js';
-import { AUTH } from '../config/constants.js';
+import crypto from 'crypto';
 
-export async function hashPassword(plain) {
-  return bcrypt.hash(plain, AUTH.BCRYPT_ROUNDS);
+const SALT_ROUNDS = 10;
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+const IV_LENGTH = 16;
+
+export function hashPassword(password) {
+  return bcrypt.hash(password, SALT_ROUNDS);
 }
 
-export async function comparePassword(plain, hash) {
-  if (typeof plain !== 'string' || typeof hash !== 'string') return false;
-  return bcrypt.compare(plain, hash);
+export async function comparePassword(password, hash) {
+  return bcrypt.compare(password, hash);
 }
 
-function key() {
-  return Buffer.from(env.ENCRYPTION_KEY, 'hex');
-}
-
-// AES-256-GCM -> "iv:tag:cipher" (all hex)
-export function encrypt(plain) {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key(), iv);
-  const enc = Buffer.concat([cipher.update(String(plain), 'utf8'), cipher.final()]);
+export function encrypt(text) {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY), iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
   const tag = cipher.getAuthTag();
-  return `${iv.toString('hex')}:${tag.toString('hex')}:${enc.toString('hex')}`;
+  return iv.toString('hex') + ':' + encrypted + ':' + tag.toString('hex');
 }
 
-export function decrypt(payload) {
-  const parts = String(payload ?? '').split(':');
-  if (parts.length !== 3) throw new Error('Invalid encrypted payload');
-  const [ivHex, tagHex, dataHex] = parts;
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key(), Buffer.from(ivHex, 'hex'));
-  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-  const dec = Buffer.concat([decipher.update(Buffer.from(dataHex, 'hex')), decipher.final()]);
-  return dec.toString('utf8');
-}
-
-export function randomToken(bytes = 32) {
-  return crypto.randomBytes(bytes).toString('hex');
+export function decrypt(text) {
+  const [iv, encrypted, tag] = text.split(':');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY), Buffer.from(iv, 'hex'));
+  decipher.setAuthTag(Buffer.from(tag, 'hex'));
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
 }
