@@ -1,15 +1,20 @@
-import { AppError } from '../utils/response.util.js';
-import { verifyAccessToken } from '../utils/jwt.util.js';
+import jwt from 'jsonwebtoken';
+import { AppError } from '../utils/response.util';
+import { verifyAccessToken } from '../utils/jwt.util';
 
 export function authenticate(req, res, next) {
-  const header = req.get('authorization') || '';
-  const [scheme, token] = header.split(' ');
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
 
-  if (!scheme || scheme.toLowerCase() !== 'bearer' || !token) {
-    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  if (!token) {
+    return next(new AppError(401, 'UNAUTHORIZED', 'No token provided'));
   }
 
-  const payload = verifyAccessToken(token);
-  req.user = { id: payload.sub, role: payload.role };
-  next();
+  try {
+    const decoded = verifyAccessToken(token);
+    req.user = { id: decoded.id, role: decoded.role };
+    next();
+  } catch (error) {
+    next(new AppError(401, 'UNAUTHORIZED', 'Invalid token'));
+  }
 }
