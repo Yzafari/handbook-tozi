@@ -1,34 +1,26 @@
-import { AppError } from '../utils/response.util.js';
+import { AppError } from '../utils/response.util';
+import { z } from 'zod';
 
-export function validate(schemas = {}) {
+export function validate(schemas) {
   return (req, res, next) => {
-    const details = [];
-    const parsed = {};
+    const { body, query, params } = req;
 
-    for (const part of ['params', 'query', 'body']) {
-      const schema = schemas[part];
-      if (!schema) continue;
-      const result = schema.safeParse(req[part]);
-      if (result.success) {
-        parsed[part] = result.data;
-      } else {
-        details.push(
-          ...result.error.issues.map((i) => ({
-            location: part,
-            path: i.path.join('.'),
-            message: i.message,
-          }))
-        );
+    try {
+      if (body && schemas.body) {
+        schemas.body.parse(body);
       }
-    }
 
-    if (details.length) {
-      return next(new AppError(400, 'VALIDATION_ERROR', 'Validation failed', details));
-    }
+      if (query && schemas.query) {
+        schemas.query.parse(query);
+      }
 
-    for (const [part, value] of Object.entries(parsed)) {
-      req[part] = value;
+      if (params && schemas.params) {
+        schemas.params.parse(params);
+      }
+
+      next();
+    } catch (error) {
+      next(new AppError(400, 'VALIDATION_ERROR', error.issues));
     }
-    return next();
   };
 }
