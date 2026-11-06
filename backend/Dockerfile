@@ -5,19 +5,27 @@ RUN apk add --no-cache openssl
 
 WORKDIR /app
 
-# Install all deps (prisma CLI is needed at runtime for `migrate deploy`)
+# Copy package.json and package-lock.json (if exists)
 COPY package*.json ./
+
+# Install all dependencies
 RUN npm install --no-audit --no-fund
 
-COPY prisma ./prisma
-RUN npx prisma generate
-
+# Copy the rest of the application code
 COPY . .
 
+# Generate Prisma client
+RUN npx prisma generate
+
+# Create uploads directory and set ownership
 RUN mkdir -p uploads && chown -R node:node /app
+
+# Switch to the non-root user
 USER node
 
+# Set environment variables
 ENV NODE_ENV=production
 EXPOSE 4000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node src/server.js"]
+# Start the application
+CMD ["node", "src/server.js"]
