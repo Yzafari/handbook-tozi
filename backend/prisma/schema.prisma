@@ -8,166 +8,91 @@ datasource db {
 }
 
 enum Role {
-  USER
   ADMIN
-  SUPER_ADMIN
+  USER
 }
 
 enum SubscriptionStatus {
   ACTIVE
-  EXPIRED
-  CANCELED
+  CANCELLED
+  PENDING
 }
 
 enum PaymentStatus {
   PENDING
-  SUCCESS
+  COMPLETED
   FAILED
-  EXPIRED
-}
-
-enum NotificationType {
-  INFO
-  SUBSCRIPTION_EXPIRING
-  SUBSCRIPTION_EXPIRED
-  PAYMENT_SUCCESS
-  PAYMENT_FAILED
-  SECURITY
 }
 
 model User {
-  id               String         @id @default(uuid())
-  email            String         @unique
-  passwordHash     String
-  fullName         String
-  phoneEncrypted   String?
-  avatarUrl        String?
-  role             Role           @default(USER)
-  isActive         Boolean        @default(true)
-  emailVerified    Boolean        @default(false)
-  failedLoginCount Int            @default(0)
-  lockedUntil      DateTime?
-  lastLoginAt      DateTime?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  refreshTokens    RefreshToken[]
-  payments         Payment[]
-  subscriptions    Subscription[]
-  auditLogs        AuditLog[]
-  notifications    Notification[]
-
-  @@index([role])
-  @@index([createdAt])
-  @@index([isActive])
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model RefreshToken {
-  id           String    @id @default(uuid())
-  userId       String
-  tokenHash    String    @unique
-  userAgent    String?
-  ip           String?
-  expiresAt    DateTime
-  revokedAt    DateTime?
-  replacedById String?
-  createdAt    DateTime  @default(now())
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([expiresAt])
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model Plan {
-  id            String         @id @default(uuid())
-  slug          String         @unique
-  name          String
-  description   String?
-  priceToman    Int
-  durationDays  Int
-  features      Json           @default("[]")
-  isActive      Boolean        @default(true)
-  sortOrder     Int            @default(0)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  payments      Payment[]
-  subscriptions Subscription[]
-
-  @@index([isActive, sortOrder])
+  id        Int      @id @default(autoincrement())
+  name      String
+  price     Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Subscription {
-  id             String             @id @default(uuid())
-  userId         String
-  planId         String
-  status         SubscriptionStatus @default(ACTIVE)
-  startsAt       DateTime
-  endsAt         DateTime
-  reminderSentAt DateTime?
-  canceledAt     DateTime?
-  paymentId      String?            @unique
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan           Plan               @relation(fields: [planId], references: [id])
-  payment        Payment?           @relation(fields: [paymentId], references: [id])
-
-  @@index([userId, status])
-  @@index([status, endsAt])
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  planId            Int
+  status            SubscriptionStatus @default(PENDING)
+  startDate         DateTime
+  endDate           DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id])
+  plan              Plan     @relation(fields: [planId], references: [id])
 }
 
 model Payment {
-  id             String        @id @default(uuid())
-  userId         String
-  planId         String
-  amountToman    Int
-  status         PaymentStatus @default(PENDING)
-  authority      String?       @unique
-  refId          String?
-  cardPanMasked  String?
-  description    String?
-  idempotencyKey String?       @unique
-  failureReason  String?
-  ip             String?
-  expiresAt      DateTime
-  verifiedAt     DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  user           User          @relation(fields: [userId], references: [id])
-  plan           Plan          @relation(fields: [planId], references: [id])
-  subscription   Subscription?
-
-  @@index([userId, createdAt])
-  @@index([status, createdAt])
-  @@index([status, expiresAt])
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  subscriptionId    Int
+  amount            Float
+  status            PaymentStatus @default(PENDING)
+  transactionId     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id])
+  subscription      Subscription @relation(fields: [subscriptionId], references: [id])
 }
 
 model AuditLog {
-  id        String   @id @default(uuid())
-  userId    String?
+  id        Int      @id @default(autoincrement())
+  userId    Int
   action    String
-  entity    String?
-  entityId  String?
-  ip        String?
-  userAgent String?
-  metadata  Json?
+  details   Json?
   createdAt DateTime @default(now())
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  @@index([userId, createdAt])
-  @@index([action, createdAt])
-  @@index([createdAt])
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model Notification {
-  id        String           @id @default(uuid())
-  userId    String
-  type      NotificationType @default(INFO)
-  title     String
-  body      String
-  readAt    DateTime?
-  createdAt DateTime         @default(now())
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, readAt])
-  @@index([userId, createdAt])
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
 }
