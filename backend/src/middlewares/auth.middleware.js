@@ -1,6 +1,5 @@
-import jwt from 'jsonwebtoken';
-import { AppError } from '../utils/response.util';
-import { verifyAccessToken } from '../utils/jwt.util';
+import { AppError } from '../utils/response.util.js';
+import { verifyAccessToken } from '../utils/jwt.util.js';
 
 export function authenticate(req, res, next) {
   const authHeader = req.headers['authorization'];
