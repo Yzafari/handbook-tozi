@@ -1,49 +1,36 @@
-import crypto from 'node:crypto';
 import prisma from '../config/database.js';
-import { env } from '../config/env.js';
 import { AppError } from '../utils/response.util.js';
-import { PAYMENT, AUDIT_ACTIONS } from '../config/constants.js';
+import logger from '../utils/logger.util.js';
+import { requestPayment, verifyPayment } from './zarinpal.service.js';
 import { activateSubscription } from './subscription.service.js';
-import { createNotification } from './notification.service.js';
-import { sendPaymentSuccessEmail } from './email.service.js';
 import { logEvent } from './audit.service.js';
-import * as zarinpal from './zarinpal.service.js';
+import { createNotification } from './notification.service.js';
 
-const EXPIRY_MINUTES = PAYMENT?.PENDING_TTL_MINUTES ?? 30;
+const DEFAULT_DURATION_DAYS = 30;
+const TOMAN_TO_RIAL = 10;
+const PENDING_PAYMENT_TTL_MINUTES = Number(process.env.PAYMENT_PENDING_TTL_MINUTES) || 30;
 
-function notFound() {
-  return new AppError(404, 'NOT_FOUND', 'Payment not found.');
-}
-
-function paymentError(message, details) {
-  return new AppError(502, 'PAYMENT_ERROR', message, details);
+function getCallbackUrl() {
+  const base =
+    process.env.PAYMENT_CALLBACK_BASE_URL ||
+    process.env.APP_BASE_URL ||
+    `http://localhost:${process.env.PORT || 3000}`;
+  return `${base.replace(/\/+$/, '')}/api/payments/callback`;
 }
 
 function maskCardPan(cardPan) {
-  if (typeof cardPan !== 'string') return null;
-
-  const digits = cardPan.replace(/\D/g, '');
-  if (digits.length < 4) return null;
-
-  return `${'*'.repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+  if (!cardPan) return null;
+  const digits = String(cardPan).replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  return `${digits.slice(0, 6)}******${digits.slice(-4)}`;
 }
 
-function publicOutcome(status) {
-  return status === 'SUCCESS' ? 'success' : 'failed';
-}
-
-function safeMetadata(payment) {
-  return {
-    paymentId: payment.id,
-    planId: payment.planId,
-    amountToman: payment.amountToman,
-    status: payment.status,
-  };
+function toRial(amountToman) {
+  return Math.round(Number(amountToman) * TOMAN_TO_RIAL);
 }
 
 export function toPublicPayment(payment) {
   if (!payment) return null;
-
   return {
     id: payment.id,
     planId: payment.planId,
@@ -57,508 +44,295 @@ export function toPublicPayment(payment) {
   };
 }
 
-async function audit({ userId, action, payment, req, metadata = {} }) {
-  try {
-    await logEvent({
-      userId,
-      action,
-      entity: 'Payment',
-      entityId: payment?.id,
-      req,
-      metadata: {
-        ...safeMetadata(payment ?? {}),
-        ...metadata,
-      },
-    });
-  } catch {
-    // The shared audit service is specified as non-throwing. Do not
-    // compromise payment processing if a custom implementation throws.
+/**
+ * Create a PENDING payment and open a Zarinpal session for it.
+ *
+ * @param {number} userId
+ * @param {{ planId: number, durationDays?: number }} payload
+ * @param {import('express').Request} [req]
+ * @returns {Promise<{ payment: object, paymentUrl: string, authority: string }>}
+ */
+export async function createPaymentRequest(userId, payload = {}, req) {
+  const planId = Number(payload.planId);
+  if (!Number.isInteger(planId) || planId <= 0) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'شناسه پلن نامعتبر است');
   }
-}
 
-async function notifyPaymentResult(payment, success) {
-  const user = await prisma.user.findUnique({
-    where: { id: payment.userId },
-    select: { id: true, email: true, fullName: true },
+  const plan = await prisma.plan.findUnique({ where: { id: planId } });
+  if (!plan || plan.isActive === false) {
+    throw new AppError(404, 'NOT_FOUND', 'پلن یافت نشد');
+  }
+
+  const amountToman = Math.round(Number(plan.price));
+  if (!Number.isFinite(amountToman) || amountToman <= 0) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'قیمت پلن نامعتبر است');
+  }
+
+  const requestedDays = Number(payload.durationDays);
+  const durationDays =
+    Number.isInteger(requestedDays) && requestedDays > 0
+      ? requestedDays
+      : Number(plan.duration) > 0
+        ? Number(plan.duration)
+        : DEFAULT_DURATION_DAYS;
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
+
+  const payment = await prisma.payment.create({
+    data: {
+      userId,
+      planId: plan.id,
+      amountToman,
+      durationDays,
+      status: 'PENDING',
+    },
   });
 
-  if (!user) return;
-
+  let gateway;
   try {
-    await createNotification({
-      userId: user.id,
-      type: success ? 'PAYMENT_SUCCESS' : 'PAYMENT_FAILED',
-      title: success ? 'پرداخت موفق' : 'پرداخت ناموفق',
-      body: success
-        ? `پرداخت ${payment.amountToman} تومان با موفقیت تأیید شد.`
-        : 'پرداخت تأیید نشد. در صورت کسر وجه، نتیجه را از درگاه پیگیری کنید.',
+    gateway = await requestPayment({
+      amount: toRial(amountToman),
+      callbackUrl: getCallbackUrl(),
+      description: `خرید ${plan.name}`,
+      email: user.email,
     });
-  } catch {
-    // Notification delivery must not roll back a verified payment.
-  }
-
-  if (success && user.email) {
-    try {
-      await sendPaymentSuccessEmail({
-        to: user.email,
-        fullName: user.fullName,
-        payment: toPublicPayment(payment),
-      });
-    } catch {
-      // Email delivery must not roll back a verified payment.
-    }
-  }
-}
-
-export async function createPaymentRequest(
-  userId,
-  { planId, idempotencyKey },
-  req,
-) {
-  if (idempotencyKey) {
-    const existing = await prisma.payment.findFirst({
-      where: {
-        userId,
-        idempotencyKey,
-      },
-      include: { plan: true },
-    });
-
-    if (existing) {
-      if (
-        existing.status === 'PENDING' &&
-        existing.expiresAt > new Date() &&
-        existing.authority
-      ) {
-        const sandbox = Boolean(env.ZARINPAL_SANDBOX);
-        const host = sandbox
-          ? 'https://sandbox.zarinpal.com'
-          : 'https://payment.zarinpal.com';
-
-        return {
-          paymentId: existing.id,
-          paymentUrl: `${host}/pg/StartPay/${encodeURIComponent(existing.authority)}`,
-        };
-      }
-
-      throw new AppError(
-        409,
-        'CONFLICT',
-        'This idempotency key has already been used.',
-      );
-    }
-  }
-
-  const plan = await prisma.plan.findFirst({
-    where: { id: planId, isActive: true },
-  });
-
-  if (!plan) {
-    throw new AppError(404, 'NOT_FOUND', 'Active plan not found.');
-  }
-
-  if (!Number.isSafeInteger(plan.priceToman) || plan.priceToman <= 0) {
-    throw new AppError(500, 'INTERNAL_ERROR', 'Plan price is invalid.');
-  }
-
-  const now = new Date();
-  const expiresAt = new Date(
-    now.getTime() + EXPIRY_MINUTES * 60 * 1000,
-  );
-
-  let payment;
-
-  try {
-    payment = await prisma.payment.create({
-      data: {
-        userId,
-        planId: plan.id,
-        amountToman: plan.priceToman,
-        status: 'PENDING',
-        description: `Subscription: ${plan.name}`,
-        idempotencyKey: idempotencyKey ?? null,
-        ip: req?.ip ?? null,
-        expiresAt,
-      },
-    });
-  } catch (error) {
-    // A concurrent request may win the unique idempotency key race.
-    if (idempotencyKey) {
-      const existing = await prisma.payment.findFirst({
-        where: { userId, idempotencyKey },
-      });
-
-      if (
-        existing?.status === 'PENDING' &&
-        existing.expiresAt > new Date() &&
-        existing.authority
-      ) {
-        const host = env.ZARINPAL_SANDBOX
-          ? 'https://sandbox.zarinpal.com'
-          : 'https://payment.zarinpal.com';
-
-        return {
-          paymentId: existing.id,
-          paymentUrl: `${host}/pg/StartPay/${encodeURIComponent(existing.authority)}`,
-        };
-      }
-    }
-
-    throw error;
-  }
-
-  try {
-    const callbackUrl = env.ZARINPAL_CALLBACK_URL;
-
-    if (!callbackUrl) {
-      throw paymentError('Payment callback URL is not configured.');
-    }
-
-    const gateway = await zarinpal.requestPayment({
-      amountToman: payment.amountToman,
-      description: payment.description,
-      callbackUrl,
-    });
-
-    const updated = await prisma.payment.updateMany({
-      where: { id: payment.id, status: 'PENDING' },
-      data: { authority: gateway.authority },
-    });
-
-    if (updated.count !== 1) {
-      throw new AppError(
-        409,
-        'CONFLICT',
-        'Payment request is no longer pending.',
-      );
-    }
-
-    await audit({
-      userId,
-      action: AUDIT_ACTIONS.PAYMENT_REQUESTED,
-      payment: { ...payment, authority: gateway.authority },
-      req,
-    });
-
-    return {
-      paymentId: payment.id,
-      paymentUrl: gateway.paymentUrl,
-    };
   } catch (error) {
     await prisma.payment.updateMany({
       where: { id: payment.id, status: 'PENDING' },
+      data: { status: 'FAILED' },
+    });
+    throw error;
+  }
+
+  const updated = await prisma.payment.update({
+    where: { id: payment.id },
+    data: { authority: gateway.authority },
+    include: { plan: true },
+  });
+
+  try {
+    await logEvent({
+      userId,
+      action: 'PAYMENT_CREATED',
+      entity: 'Payment',
+      entityId: payment.id,
+      req,
+    });
+  } catch (error) {
+    logger.error('Failed to log PAYMENT_CREATED event:', error?.message);
+  }
+
+  return {
+    payment: toPublicPayment(updated),
+    paymentUrl: gateway.paymentUrl,
+    authority: gateway.authority,
+  };
+}
+
+async function failPayment(payment, reason, req) {
+  const result = await prisma.payment.updateMany({
+    where: { id: payment.id, status: 'PENDING' },
+    data: { status: 'FAILED' },
+  });
+
+  if (result.count === 0) return false;
+
+  logger.warn(`Payment ${payment.id} marked as FAILED: ${reason}`);
+
+  try {
+    await logEvent({
+      userId: payment.userId,
+      action: 'PAYMENT_FAILED',
+      entity: 'Payment',
+      entityId: payment.id,
+      req,
+    });
+  } catch (error) {
+    logger.error('Failed to log PAYMENT_FAILED event:', error?.message);
+  }
+
+  return true;
+}
+
+async function finalizePayment(payment, verification, req) {
+  const outcome = await prisma.$transaction(async (tx) => {
+    // Atomic compare-and-set: only the first caller can move PENDING -> COMPLETED.
+    const claimed = await tx.payment.updateMany({
+      where: { id: payment.id, status: 'PENDING' },
       data: {
-        status: 'FAILED',
-        failureReason: 'PAYMENT_REQUEST_FAILED',
+        status: 'COMPLETED',
+        refId: verification.refId,
+        cardPanMasked: maskCardPan(verification.cardPan),
+        verifiedAt: new Date(),
       },
     });
 
-    if (error instanceof AppError) throw error;
+    if (claimed.count === 0) {
+      const existing = await tx.payment.findUnique({
+        where: { id: payment.id },
+        include: { plan: true },
+      });
+      return { payment: existing, subscription: null, alreadyProcessed: true };
+    }
 
-    throw paymentError('Could not create the payment request.');
+    const subscription = await activateSubscription(tx, {
+      userId: payment.userId,
+      planId: payment.planId,
+      durationDays: payment.durationDays,
+    });
+
+    const updated = await tx.payment.update({
+      where: { id: payment.id },
+      data: { subscriptionId: subscription.id },
+      include: { plan: true },
+    });
+
+    return { payment: updated, subscription, alreadyProcessed: false };
+  });
+
+  if (!outcome.alreadyProcessed) {
+    try {
+      await logEvent({
+        userId: payment.userId,
+        action: 'PAYMENT_COMPLETED',
+        entity: 'Payment',
+        entityId: payment.id,
+        req,
+      });
+      await createNotification({
+        userId: payment.userId,
+        type: 'PAYMENT_SUCCESS',
+        title: 'پرداخت موفق',
+        body: `پرداخت شما با کد پیگیری ${verification.refId} با موفقیت انجام شد.`,
+      });
+    } catch (error) {
+      logger.error('Post-payment side effects failed:', error?.message);
+    }
   }
+
+  return {
+    payment: toPublicPayment(outcome.payment),
+    subscriptionId: outcome.subscription?.id ?? outcome.payment?.subscriptionId ?? null,
+    alreadyProcessed: outcome.alreadyProcessed,
+  };
 }
 
-export async function handleCallback({ authority, status }, req) {
-  if (!authority || !['OK', 'NOK'].includes(status)) {
-    return { paymentId: null, outcome: 'failed' };
+/**
+ * Handle the browser redirect back from Zarinpal.
+ *
+ * @param {{ authority?: string, status?: string }} params
+ * @param {import('express').Request} [req]
+ */
+export async function handleCallback(params = {}, req) {
+  const authority = params.authority || params.Authority;
+  const status = params.status || params.Status;
+
+  if (!authority) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'authority الزامی است');
   }
 
   const payment = await prisma.payment.findUnique({
     where: { authority },
-    include: {
-      plan: true,
-      user: { select: { id: true, email: true, fullName: true } },
-    },
+    include: { plan: true },
   });
 
-  // Never disclose whether an unknown authority exists.
-  if (!payment) return { paymentId: null, outcome: 'failed' };
+  if (!payment) throw new AppError(404, 'NOT_FOUND', 'پرداخت یافت نشد');
 
-  if (payment.status === 'SUCCESS') {
-    return { paymentId: payment.id, outcome: 'success' };
-  }
-
-  if (
-    payment.status !== 'PENDING' ||
-    payment.expiresAt <= new Date()
-  ) {
-    if (payment.status === 'PENDING') {
-      await prisma.payment.updateMany({
-        where: { id: payment.id, status: 'PENDING' },
-        data: {
-          status: 'EXPIRED',
-          failureReason: 'PAYMENT_EXPIRED',
-        },
-      });
-    }
-
-    return { paymentId: payment.id, outcome: 'failed' };
-  }
-
-  if (status === 'NOK') {
-    const changed = await prisma.payment.updateMany({
-      where: { id: payment.id, status: 'PENDING' },
-      data: {
-        status: 'FAILED',
-        failureReason: 'GATEWAY_CANCELLED',
-      },
-    });
-
-    if (changed.count === 1) {
-      await audit({
-        userId: payment.userId,
-        action: AUDIT_ACTIONS.PAYMENT_FAILED,
-        payment: { ...payment, status: 'FAILED' },
-        req,
-      });
-      await notifyPaymentResult(
-        { ...payment, status: 'FAILED' },
-        false,
-      );
-    }
-
-    const current = await prisma.payment.findUnique({
-      where: { id: payment.id },
-    });
-
+  // Idempotency: a repeated callback for a finalized payment is a no-op.
+  if (payment.status === 'COMPLETED') {
     return {
-      paymentId: payment.id,
-      outcome: publicOutcome(current?.status),
+      payment: toPublicPayment(payment),
+      subscriptionId: payment.subscriptionId ?? null,
+      alreadyProcessed: true,
     };
+  }
+
+  if (payment.status === 'FAILED') {
+    throw new AppError(409, 'CONFLICT', 'این پرداخت قبلا ناموفق ثبت شده است');
+  }
+
+  if (status && String(status).toUpperCase() !== 'OK') {
+    await failPayment(payment, `gateway status: ${status}`, req);
+    throw new AppError(400, 'PAYMENT_CANCELLED', 'پرداخت توسط کاربر لغو شد');
   }
 
   let verification;
-
   try {
-    verification = await zarinpal.verifyPayment({
-      amountToman: payment.amountToman,
-      authority: payment.authority,
+    verification = await verifyPayment({
+      amount: toRial(payment.amountToman),
+      authority,
     });
   } catch (error) {
-    // A transient gateway failure is not proof that the customer failed
-    // to pay. Keep the record pending so the callback can be retried.
-    throw error instanceof AppError
-      ? error
-      : paymentError('Payment verification failed.');
+    await failPayment(payment, 'verification failed', req);
+    throw error;
   }
 
-  if (verification.code !== 100 && verification.code !== 101) {
-    const changed = await prisma.payment.updateMany({
-      where: { id: payment.id, status: 'PENDING' },
-      data: {
-        status: 'FAILED',
-        failureReason: `GATEWAY_VERIFY_${verification.code}`,
-      },
-    });
-
-    if (changed.count === 1) {
-      await audit({
-        userId: payment.userId,
-        action: AUDIT_ACTIONS.PAYMENT_FAILED,
-        payment: { ...payment, status: 'FAILED' },
-        req,
-        metadata: { gatewayCode: verification.code },
-      });
-      await notifyPaymentResult(
-        { ...payment, status: 'FAILED' },
-        false,
-      );
-    }
-
-    const current = await prisma.payment.findUnique({
-      where: { id: payment.id },
-    });
-
-    return {
-      paymentId: payment.id,
-      outcome: publicOutcome(current?.status),
-    };
-  }
-
-  let activated = false;
-  let committedPayment = null;
-
-  await prisma.$transaction(async (tx) => {
-    const claimed = await tx.payment.updateMany({
-      where: {
-        id: payment.id,
-        status: 'PENDING',
-        expiresAt: { gt: new Date() },
-      },
-      data: {
-        status: 'SUCCESS',
-        refId: verification.refId,
-        cardPanMasked: maskCardPan(verification.cardPan),
-        verifiedAt: new Date(),
-        failureReason: null,
-      },
-    });
-
-    if (claimed.count !== 1) {
-      committedPayment = await tx.payment.findUnique({
-        where: { id: payment.id },
-      });
-      return;
-    }
-
-    // Only code 100 represents a fresh verification. Code 101 means
-    // Zarinpal already verified this authority. It must never cause
-    // another activation if this application did not commit success.
-    if (verification.code !== 100) {
-      throw new AppError(
-        409,
-        'CONFLICT',
-        'Payment was already verified by the gateway but not finalized locally.',
-      );
-    }
-
-    await activateSubscription(tx, {
-      userId: payment.userId,
-      planId: payment.planId,
-      paymentId: payment.id,
-    });
-
-    committedPayment = await tx.payment.findUnique({
-      where: { id: payment.id },
-      include: { plan: true },
-    });
-
-    activated = true;
-  });
-
-  if (!activated) {
-    const current = committedPayment
-      ?? await prisma.payment.findUnique({
-        where: { id: payment.id },
-      });
-
-    return {
-      paymentId: payment.id,
-      outcome: publicOutcome(current?.status),
-    };
-  }
-
-  await audit({
-    userId: payment.userId,
-    action: AUDIT_ACTIONS.PAYMENT_SUCCESS,
-    payment: committedPayment,
-    req,
-    metadata: { refId: verification.refId },
-  });
-
-  await notifyPaymentResult(committedPayment, true);
-
-  return { paymentId: payment.id, outcome: 'success' };
+  return finalizePayment(payment, verification, req);
 }
 
-export async function handleWebhook(rawBody, signatureHeader) {
-  if (!env.PAYMENT_WEBHOOK_SECRET) {
-    throw paymentError('Payment webhook is not configured.');
-  }
-
-  const body = Buffer.isBuffer(rawBody)
-    ? rawBody
-    : Buffer.from(rawBody ?? '');
-
-  const supplied = typeof signatureHeader === 'string'
-    ? signatureHeader.trim()
-    : '';
-
-  if (!/^[a-f0-9]{64}$/i.test(supplied)) {
-    throw new AppError(401, 'UNAUTHORIZED', 'Invalid webhook signature.');
-  }
-
-  const expected = crypto
-    .createHmac('sha256', env.PAYMENT_WEBHOOK_SECRET)
-    .update(body)
-    .digest();
-
-  const provided = Buffer.from(supplied, 'hex');
-
-  if (
-    provided.length !== expected.length ||
-    !crypto.timingSafeEqual(provided, expected)
-  ) {
-    throw new AppError(401, 'UNAUTHORIZED', 'Invalid webhook signature.');
-  }
-
-  let parsed;
-
+/**
+ * Server-to-server notification endpoint. Zarinpal v4 has no true webhook, so this
+ * accepts the same payload shape as the callback and reuses the idempotent path.
+ * Never throws: always resolves so the gateway receives a 200.
+ */
+export async function handleWebhook(payload = {}, req) {
   try {
-    parsed = JSON.parse(body.toString('utf8'));
-  } catch {
-    throw new AppError(400, 'VALIDATION_ERROR', 'Invalid webhook JSON.');
+    const result = await handleCallback(
+      {
+        authority: payload.authority || payload.Authority,
+        status: payload.status || payload.Status || 'OK',
+      },
+      req
+    );
+    return { ok: true, ...result };
+  } catch (error) {
+    logger.error('Payment webhook failed:', error?.message);
+    return { ok: false, reason: error?.message ?? 'unknown error' };
   }
-
-  const { authority } = parsed ?? {};
-
-  if (typeof authority !== 'string' || !authority.trim()) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'Invalid webhook body.');
-  }
-
-  const result = await handleCallback(
-    { authority: authority.trim(), status: 'OK' },
-    undefined,
-  );
-
-  return { status: result.outcome };
 }
 
 export async function getPaymentForUser(userId, paymentId) {
+  const id = Number(paymentId);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'شناسه پرداخت نامعتبر است');
+  }
+
   const payment = await prisma.payment.findFirst({
-    where: { id: paymentId, userId },
-    include: { plan: { select: { name: true } } },
+    where: { id, userId },
+    include: { plan: true },
   });
 
-  if (!payment) throw notFound();
+  if (!payment) throw new AppError(404, 'NOT_FOUND', 'پرداخت یافت نشد');
 
   return toPublicPayment(payment);
 }
 
+/**
+ * Mark stale PENDING payments as FAILED. Invoked by the 5-minute cron job.
+ *
+ * @returns {Promise<number>} number of payments expired
+ */
 export async function expirePendingPayments() {
-  const now = new Date();
+  const cutoff = new Date(Date.now() - PENDING_PAYMENT_TTL_MINUTES * 60 * 1000);
 
-  const expired = await prisma.payment.findMany({
-    where: {
-      status: 'PENDING',
-      expiresAt: { lt: now },
-    },
-    select: {
-      id: true,
-      userId: true,
-      planId: true,
-      amountToman: true,
-      status: true,
-      expiresAt: true,
-    },
+  const result = await prisma.payment.updateMany({
+    where: { status: 'PENDING', createdAt: { lt: cutoff } },
+    data: { status: 'FAILED' },
   });
 
-  let count = 0;
-
-  for (const payment of expired) {
-    const changed = await prisma.payment.updateMany({
-      where: {
-        id: payment.id,
-        status: 'PENDING',
-        expiresAt: { lt: now },
-      },
-      data: {
-        status: 'EXPIRED',
-        failureReason: 'PAYMENT_EXPIRED',
-      },
-    });
-
-    if (changed.count !== 1) continue;
-
-    count += 1;
-
-    await audit({
-      userId: payment.userId,
-      action: AUDIT_ACTIONS.PAYMENT_EXPIRED,
-      payment: { ...payment, status: 'EXPIRED' },
-    });
+  if (result.count > 0) {
+    logger.info(`Expired ${result.count} pending payment(s).`);
   }
 
-  return count;
+  return result.count;
 }
+
+export default {
+  createPaymentRequest,
+  handleCallback,
+  handleWebhook,
+  getPaymentForUser,
+  toPublicPayment,
+  expirePendingPayments,
+};
