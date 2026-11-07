@@ -1,5 +1,5 @@
 import { AppError } from '../utils/response.util';
-import { z } from 'zod';
+import { ZodError } from 'zod';
 
 // Express 5 exposes req.query as a getter-only property, so a plain assignment
 // throws. Fall back to defineProperty when the property is not writable.
@@ -35,7 +35,12 @@ export function validate(schemas) {
 
       next();
     } catch (error) {
-      next(new AppError(400, 'VALIDATION_ERROR', error.issues));
+      if (error instanceof ZodError) {
+        // Keep the issues array structured: pass it as `details` so the error
+        // handler can return it under `meta` instead of stringifying it.
+        return next(new AppError(400, 'VALIDATION_ERROR', 'Validation error', error.issues));
+      }
+      next(error);
     }
   };
 }

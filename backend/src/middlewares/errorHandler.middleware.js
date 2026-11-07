@@ -9,7 +9,7 @@ export function notFoundHandler(req, res, next) {
 
 export function errorHandler(err, req, res, next) {
   if (err instanceof AppError) {
-    return res.status(err.statusCode).json({ success: false, message: err.message, meta: err.meta });
+    return res.status(err.status).json({ success: false, message: err.message, meta: err.details });
   }
 
   if (err instanceof ZodError) {
