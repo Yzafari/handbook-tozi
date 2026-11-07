@@ -1,140 +1,148 @@
 import axios from 'axios';
-import { env } from '../config/env.js';
 import { AppError } from '../utils/response.util.js';
+import logger from '../utils/logger.util.js';
 
-const REQUEST_TIMEOUT_MS = 15_000;
+const ZARINPAL_CODES = {
+  SUCCESS: 100,
+  ALREADY_VERIFIED: 101,
+};
 
-const baseUrl = env.ZARINPAL_SANDBOX
-  ? 'https://sandbox.zarinpal.com'
-  : 'https://payment.zarinpal.com';
-
-const merchantId = env.ZARINPAL_MERCHANT_ID;
-
-function paymentError(message, details) {
-  return new AppError(502, 'PAYMENT_ERROR', message, details);
-}
-
-function extractGatewayError(error) {
-  const status = error?.response?.status;
-  const code = error?.response?.data?.errors?.[0]?.code;
-
-  return {
-    upstreamStatus: Number.isInteger(status) ? status : undefined,
-    gatewayCode: code !== undefined ? String(code) : undefined,
-  };
-}
-
-async function postGateway(path, payload) {
+function getConfig() {
+  const merchantId = process.env.ZARINPAL_MERCHANT_ID;
   if (!merchantId) {
-    throw paymentError('Payment gateway is not configured.');
+    throw new AppError(500, 'CONFIG_ERROR', 'ZARINPAL_MERCHANT_ID is not set');
   }
 
-  try {
-    const response = await axios.post(
-      `${baseUrl}${path}`,
-      payload,
-      {
-        timeout: REQUEST_TIMEOUT_MS,
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-      },
-    );
+  const sandbox = String(process.env.ZARINPAL_SANDBOX).toLowerCase() === 'true';
+  const baseUrl = sandbox
+    ? 'https://sandbox.zarinpal.com/pg/v4/payment'
+    : 'https://api.zarinpal.com/pg/v4/payment';
+  const startPayBase = sandbox
+    ? 'https://sandbox.zarinpal.com/pg/StartPay'
+    : 'https://www.zarinpal.com/pg/StartPay';
 
-    return response.data;
-  } catch (error) {
-    // Do not log or expose the merchant ID, request body, or credentials.
-    if (error instanceof AppError) {
-      throw error;
-    }
+  return { merchantId, baseUrl, startPayBase };
+}
 
-    throw paymentError(
-      'The payment gateway request failed.',
-      extractGatewayError(error),
-    );
+function extractError(response) {
+  const errors = response?.data?.errors;
+  if (Array.isArray(errors) && errors.length > 0) {
+    const first = errors[0];
+    return {
+      code: first?.code,
+      message: first?.message || 'Zarinpal request failed',
+    };
   }
+  return { code: undefined, message: 'Zarinpal request failed' };
 }
 
 /**
- * Requests a Zarinpal payment.
+ * Request a new payment from Zarinpal.
  *
- * amountToman is an integer in Toman. The IRT currency is explicit,
- * so the amount must not be converted to Rial.
+ * @param {Object} params
+ * @param {number} params.amount        Amount in Rials (Zarinpal v4 default unit).
+ * @param {string} params.callbackUrl   URL Zarinpal redirects the user back to.
+ * @param {string} [params.description] Payment description shown to the user.
+ * @param {string} [params.email]       Optional payer email.
+ * @param {string} [params.mobile]      Optional payer mobile number.
+ * @returns {Promise<{ authority: string, paymentUrl: string, fee: number }>}
  */
-export async function requestPayment({
-  amountToman,
-  description,
-  callbackUrl,
-}) {
-  if (
-    !Number.isSafeInteger(amountToman) ||
-    amountToman <= 0 ||
-    typeof description !== 'string' ||
-    !description.trim() ||
-    typeof callbackUrl !== 'string' ||
-    !callbackUrl.trim()
-  ) {
-    throw paymentError('Invalid payment request parameters.');
+export async function requestPayment({ amount, callbackUrl, description, email, mobile }) {
+  if (!amount || Number(amount) <= 0) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'amount must be a positive number');
+  }
+  if (!callbackUrl) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'callbackUrl is required');
   }
 
-  const result = await postGateway('/pg/v4/payment/request.json', {
+  const { merchantId, baseUrl, startPayBase } = getConfig();
+
+  const payload = {
     merchant_id: merchantId,
-    amount: amountToman,
+    amount: Math.round(Number(amount)),
     callback_url: callbackUrl,
-    description: description.trim(),
-    currency: 'IRT',
-  });
+    description: description || 'پرداخت اشتراک',
+  };
 
-  const data = result?.data;
+  const metadata = {};
+  if (email) metadata.email = email;
+  if (mobile) metadata.mobile = mobile;
+  if (Object.keys(metadata).length > 0) payload.metadata = metadata;
 
-  if (data?.code !== 100 || !data?.authority) {
-    throw paymentError(
-      'The payment gateway rejected the payment request.',
-      {
-        gatewayCode: data?.code,
-      },
-    );
+  let response;
+  try {
+    response = await axios.post(`${baseUrl}/request.json`, payload, {
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      timeout: 15000,
+    });
+  } catch (error) {
+    logger.error('Zarinpal requestPayment network error:', error?.message);
+    throw new AppError(502, 'PAYMENT_GATEWAY_ERROR', 'خطا در ارتباط با درگاه پرداخت');
   }
 
-  const authority = data.authority;
+  const data = response?.data?.data;
+  if (!data || data.code !== ZARINPAL_CODES.SUCCESS || !data.authority) {
+    const { code, message } = extractError(response);
+    logger.error('Zarinpal requestPayment failed:', { code, message });
+    throw new AppError(502, 'PAYMENT_GATEWAY_ERROR', message, { code });
+  }
 
   return {
-    authority,
-    paymentUrl: `${baseUrl}/pg/StartPay/${encodeURIComponent(authority)}`,
+    authority: data.authority,
+    paymentUrl: `${startPayBase}/${data.authority}`,
+    fee: data.fee ?? 0,
   };
 }
 
 /**
- * Verifies a payment using the amount stored by the application.
- * Codes 100 and 101 are returned to the caller for explicit handling.
+ * Verify a payment with Zarinpal.
+ *
+ * @param {Object} params
+ * @param {number} params.amount     Amount in Rials (must match the request amount).
+ * @param {string} params.authority  Authority returned by Zarinpal on callback.
+ * @returns {Promise<{ refId: string, cardPan: string|null, code: number }>}
  */
-export async function verifyPayment({ amountToman, authority }) {
-  if (
-    !Number.isSafeInteger(amountToman) ||
-    amountToman <= 0 ||
-    typeof authority !== 'string' ||
-    !authority.trim()
-  ) {
-    throw paymentError('Invalid payment verification parameters.');
+export async function verifyPayment({ amount, authority }) {
+  if (!amount || Number(amount) <= 0) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'amount must be a positive number');
+  }
+  if (!authority) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'authority is required');
   }
 
-  const result = await postGateway('/pg/v4/payment/verify.json', {
+  const { merchantId, baseUrl } = getConfig();
+
+  const payload = {
     merchant_id: merchantId,
-    amount: amountToman,
-    authority: authority.trim(),
-    currency: 'IRT',
-  });
+    amount: Math.round(Number(amount)),
+    authority,
+  };
 
-  const data = result?.data;
+  let response;
+  try {
+    response = await axios.post(`${baseUrl}/verify.json`, payload, {
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      timeout: 15000,
+    });
+  } catch (error) {
+    logger.error('Zarinpal verifyPayment network error:', error?.message);
+    throw new AppError(502, 'PAYMENT_GATEWAY_ERROR', 'خطا در ارتباط با درگاه پرداخت');
+  }
 
-  if (!Number.isInteger(data?.code)) {
-    throw paymentError('The payment gateway returned an invalid response.');
+  const data = response?.data?.data;
+  const code = data?.code;
+
+  if (code !== ZARINPAL_CODES.SUCCESS && code !== ZARINPAL_CODES.ALREADY_VERIFIED) {
+    const { code: errCode, message } = extractError(response);
+    logger.error('Zarinpal verifyPayment failed:', { code: errCode, message });
+    throw new AppError(400, 'PAYMENT_VERIFICATION_FAILED', message, { code: errCode });
   }
 
   return {
-    code: data.code,
-    refId: data.ref_id != null ? String(data.ref_id) : null,
+    refId: String(data.ref_id),
     cardPan: data.card_pan ?? null,
+    code,
   };
 }
+
+export default { requestPayment, verifyPayment };
