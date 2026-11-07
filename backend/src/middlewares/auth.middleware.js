@@ -11,9 +11,12 @@ export function authenticate(req, res, next) {
 
   try {
     const decoded = verifyAccessToken(token);
-    req.user = { id: decoded.id, role: decoded.role };
+    req.user = { id: decoded.sub, role: decoded.role };
     next();
   } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return next(new AppError(401, 'TOKEN_EXPIRED', 'Access token expired'));
+    }
     next(new AppError(401, 'UNAUTHORIZED', 'Invalid token'));
   }
 }
