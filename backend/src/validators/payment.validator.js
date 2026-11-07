@@ -1,19 +1,16 @@
 import { z } from 'zod';
 
-export const requestPaymentSchema = z.object({
-  planId: z.string().uuid(),
-  idempotencyKey: z.string().trim().min(8).max(64).optional(),
-}).strict();
+export const createPaymentSchema = z.object({
+  planId: z.coerce
+    .number({ invalid_type_error: 'planId must be a number' })
+    .int('planId must be an integer')
+    .positive('planId must be a positive integer'),
+  durationDays: z.coerce
+    .number({ invalid_type_error: 'durationDays must be a number' })
+    .int('durationDays must be an integer')
+    .positive('durationDays must be a positive integer')
+    .max(3650, 'durationDays is too large')
+    .optional(),
+});
 
-export const verifyQuerySchema = z.object({
-  Authority: z.string().trim().min(1).max(128),
-  Status: z.enum(['OK', 'NOK']),
-}).strict();
-
-export const paymentIdParamSchema = z.object({
-  id: z.string().uuid(),
-}).strict();
-
-export const webhookBodySchema = z.object({
-  authority: z.string().trim().min(1).max(128),
-}).strict();
+export default { createPaymentSchema };
