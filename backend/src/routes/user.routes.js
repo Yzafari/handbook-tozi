@@ -1,65 +1,65 @@
-import { Router } from 'express';
+import express from 'express';
 import multer from 'multer';
-import path from 'path';
 import fs from 'fs';
-import crypto from 'crypto';
-import { env } from '../config/env.js';
+import path from 'path';
 import { authenticate } from '../middlewares/auth.middleware.js';
-import { validate } from '../middlewares/validation.middleware.js';
 import { AppError } from '../utils/response.util.js';
-import { updateProfileSchema, paginationQuerySchema } from '../validators/user.validator.js';
-import {
-  me,
-  updateMe,
-  uploadAvatar,
-  dashboard,
-  myPayments,
-  myNotifications,
-  readNotification,
-} from '../controllers/user.controller.js';
+import * as userController from '../controllers/user.controller.js';
 
-const router = Router();
+const router = express.Router();
 
-const uploadDirectory = path.resolve(process.cwd(), env.UPLOAD_DIR);
-if (!fs.existsSync(uploadDirectory)) {
-  fs.mkdirSync(uploadDirectory, { recursive: true });
-}
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const ALLOWED_MIME = new Map([
+  ['image/jpeg', '.jpg'],
+  ['image/png', '.png'],
+  ['image/webp', '.webp'],
+  ['image/gif', '.gif'],
+]);
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, uploadDirectory);
-  },
-  filename: (_req, file, cb) => {
-    const randomHex = crypto.randomBytes(16).toString('hex');
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${randomHex}${ext}`);
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const ext = ALLOWED_MIME.get(file.mimetype) || '.bin';
+    const userId = req.user?.id ?? 'anon';
+    cb(null, `avatar-${userId}-${Date.now()}${ext}`);
   },
 });
-
-const allowedMimeTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 
 const upload = multer({
   storage,
-  limits: {
-    fileSize: 2 * 1024 * 1024, // 2MB
-  },
-  fileFilter: (_req, file, cb) => {
-    if (allowedMimeTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new AppError(400, 'VALIDATION_ERROR', 'فقط فرمت‌های PNG، JPG، JPEG و WEBP مجاز هستند'));
+  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    if (!ALLOWED_MIME.has(file.mimetype)) {
+      return cb(new AppError(400, 'VALIDATION_ERROR', 'فرمت فایل پشتیبانی نمی‌شود'));
     }
+    cb(null, true);
   },
 });
 
+function uploadAvatar(req, res, next) {
+  upload.single('avatar')(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof AppError) return next(err);
+    if (err instanceof multer.MulterError) {
+      const message = err.code === 'LIMIT_FILE_SIZE'
+        ? 'حجم فایل بیش از حد مجاز است'
+        : 'خطا در آپلود فایل';
+      return next(new AppError(400, 'VALIDATION_ERROR', message));
+    }
+    return next(err);
+  });
+}
+
 router.use(authenticate);
 
-router.get('/me', me);
-router.patch('/me', validate({ body: updateProfileSchema }), updateMe);
-router.post('/me/avatar', upload.single('avatar'), uploadAvatar);
-router.get('/me/dashboard', dashboard);
-router.get('/me/payments', validate({ query: paginationQuerySchema }), myPayments);
-router.get('/me/notifications', validate({ query: paginationQuerySchema }), myNotifications);
-router.patch('/me/notifications/:id/read', readNotification);
+router.get('/me', userController.getMe);
+router.patch('/me', userController.updateMe);
+router.post('/me/avatar', uploadAvatar, userController.uploadAvatar);
+router.get('/me/dashboard', userController.getDashboard);
+router.get('/me/payments', userController.getPayments);
+router.get('/me/notifications', userController.getNotifications);
+router.patch('/me/notifications/:id/read', userController.readNotification);
 
 export default router;
