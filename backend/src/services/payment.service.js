@@ -15,7 +15,7 @@ function getCallbackUrl() {
     process.env.PAYMENT_CALLBACK_BASE_URL ||
     process.env.APP_BASE_URL ||
     `http://localhost:${process.env.PORT || 3000}`;
-  return `${base.replace(/\/+$/, '')}/api/payments/callback`;
+  return `${base.replace(/\/+$/, '')}/api/payments/verify`;
 }
 
 function maskCardPan(cardPan) {
