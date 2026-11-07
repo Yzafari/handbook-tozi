@@ -1,12 +1,12 @@
-import { Router } from 'express';
+import express from 'express';
 import { authenticate } from '../middlewares/auth.middleware.js';
-import { mySubscription, cancel } from '../controllers/subscription.controller.js';
+import * as subscriptionController from '../controllers/subscription.controller.js';
 
-const router = Router();
+const router = express.Router();
 
 router.use(authenticate);
 
-router.get('/me', mySubscription);
-router.post('/me/cancel', cancel);
+router.get('/me', subscriptionController.getMySubscription);
+router.post('/me/cancel', subscriptionController.cancelMySubscription);
 
 export default router;
