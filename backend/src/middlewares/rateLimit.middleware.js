@@ -1,18 +1,31 @@
 import rateLimit from 'express-rate-limit';
 
-const globalLimiter = rateLimit({
+function jsonLimiter({ windowMs, max, message }) {
+  return rateLimit({
+    windowMs,
+    max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, code: 'RATE_LIMITED', message },
+  });
+}
+
+const globalLimiter = jsonLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 300, // limit each IP to 300 requests per windowMs
+  message: 'Too many requests, please try again later',
 });
 
-const authLimiter = rateLimit({
+const authLimiter = jsonLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // limit each IP to 10 requests per windowMs
+  message: 'Too many authentication attempts, please try again later',
 });
 
-const paymentLimiter = rateLimit({
+const paymentLimiter = jsonLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 20, // limit each IP to 20 requests per windowMs
+  message: 'Too many payment requests, please try again later',
 });
 
 export { globalLimiter, authLimiter, paymentLimiter };
