@@ -1,57 +1,37 @@
 import express from 'express';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { env } from './config/env.js';
+import path from 'path';
 import { applySecurity } from './middlewares/security.middleware.js';
-import {
-  notFoundHandler,
-  errorHandler,
-} from './middlewares/errorHandler.middleware.js';
-import apiRoutes from './routes/index.js';
+import { globalLimiter } from './middlewares/rateLimit.middleware.js';
+import { notFoundHandler, errorHandler } from './middlewares/errorHandler.middleware.js';
+import routes from './routes/index.js';
 
 const app = express();
-const currentFile = fileURLToPath(import.meta.url);
-const currentDir = path.dirname(currentFile);
 
+// Trust the first proxy hop so req.ip and the rate limiter see the real client
+// IP when the app runs behind nginx or a load balancer.
+app.set('trust proxy', 1);
+
+// Helmet, CORS, HPP, and cookie parsing. Must run before any route that reads
+// req.cookies (e.g. the CSRF and refresh-token middleware).
 applySecurity(app);
 
-// The webhook must receive the untouched request stream.
-// Skip JSON parsing only for this exact endpoint; payment.routes.js installs
-// express.raw() there. All other API endpoints use the regular JSON parser.
-app.use((req, res, next) => {
-  const pathname = (req.originalUrl || req.url).split('?')[0];
+// Body parsers. File uploads go through multer in user.routes.js, so the JSON
+// limit only needs to cover normal API payloads.
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-  if (pathname === '/api/payment/webhook') {
-    return next();
-  }
+// Serve uploaded avatars. Registered before the rate limiter so that loading
+// images does not consume the API request budget.
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-  return express.json({ limit: '1mb' })(req, res, next);
-});
+// Global rate limit for the API surface.
+app.use(globalLimiter);
 
-app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+// All application routes live under /api (see routes/index.js).
+app.use('/api', routes);
 
-app.use(
-  '/uploads',
-  express.static(path.resolve(currentDir, '../uploads'), {
-    dotfiles: 'deny',
-    index: false,
-    fallthrough: false,
-    maxAge: '1h',
-  }),
-);
-
-app.use('/api', apiRoutes);
-
+// 404 + centralized error handling. These must be registered last.
 app.use(notFoundHandler);
 app.use(errorHandler);
 
 export default app;
-
-if (process.env.NODE_ENV !== 'test') {
-  const port = env.PORT ?? 4000;
-
-  app.listen(port, () => {
-    // Never print credentials or merchant identifiers here.
-    console.info(`GridHand API listening on port ${port}`);
-  });
-}
