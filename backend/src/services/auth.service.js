@@ -6,6 +6,9 @@ import { logEvent } from './audit.service.js';
 import { createNotification } from './notification.service.js';
 import { AUDIT_ACTIONS, AUTH } from '../config/constants.js';
 
+// A valid bcrypt hash used to equalize timing when the user does not exist.
+const DUMMY_HASH = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+
 export async function toPublicUser(dbUser) {
   if (!dbUser) return null;
   const { passwordHash, ...publicUser } = dbUser;
@@ -34,8 +37,9 @@ export async function login(email, password, req) {
   const user = await prisma.user.findUnique({ where: { email } });
   
   // Timing safety: Compare against dummy hash if user doesn't exist
-  const dummyHash = '$2b$12$dummyhashdummyhashdummyhashdummyhashdummyha';
-  const isValid = user ? await comparePassword(password, user.passwordHash) : await comparePassword(password, dummyHash);
+  const isValid = user
+    ? await comparePassword(password, user.passwordHash)
+    : await comparePassword(password, DUMMY_HASH);
 
   if (!user || !isValid) {
     if (user) {

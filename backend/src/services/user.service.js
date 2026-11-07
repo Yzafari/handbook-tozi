@@ -1,6 +1,7 @@
 import prisma from '../config/database.js';
 import { AppError } from '../utils/response.util.js';
 import { encrypt, decrypt } from '../utils/hash.util.js';
+import { toPublicSubscription } from './subscription.service.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -62,18 +63,13 @@ export async function getDashboard(userId) {
   
   // ۱. اشتراک فعال
   const subscription = await prisma.subscription.findFirst({
-    where: { userId, status: 'ACTIVE', endsAt: { gt: now } },
+    where: { userId, status: 'ACTIVE', endDate: { gt: now } },
     include: { plan: true }
   });
 
-  let daysRemaining = 0;
-  if (subscription) {
-    daysRemaining = Math.max(0, Math.ceil((subscription.endsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-  }
-
   // ۲. آمار پرداخت‌ها
   const payments = await prisma.payment.findMany({
-    where: { userId, status: 'SUCCESS' }
+    where: { userId, status: 'COMPLETED' }
   });
   
   const totalPayments = payments.length;
@@ -84,19 +80,14 @@ export async function getDashboard(userId) {
     where: { userId, readAt: null }
   });
 
+  const publicSubscription = subscription ? toPublicSubscription(subscription) : null;
+
   return {
-    subscription: subscription ? {
-      id: subscription.id,
-      status: subscription.status,
-      startsAt: subscription.startsAt,
-      endsAt: subscription.endsAt,
-      daysRemaining,
-      plan: subscription.plan
-    } : null,
+    subscription: publicSubscription,
     stats: {
       totalPayments,
       totalSpentToman,
-      daysRemaining
+      daysRemaining: publicSubscription?.daysRemaining ?? 0
     },
     unreadNotifications
   };
@@ -119,7 +110,7 @@ export async function listPayments(userId, page = 1, limit = 10) {
   const data = payments.map(p => ({
     id: p.id,
     planId: p.planId,
-    planName: p.plan.name,
+    planName: p.plan?.name ?? null,
     amountToman: p.amountToman,
     status: p.status,
     refId: p.refId,
@@ -148,15 +139,20 @@ export async function listNotifications(userId, page = 1, limit = 10) {
 }
 
 export async function markNotificationRead(userId, notificationId) {
+  const id = Number(notificationId);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'شناسه اعلان نامعتبر است');
+  }
+
   const notification = await prisma.notification.findFirst({
-    where: { id: notificationId, userId }
+    where: { id, userId }
   });
 
   if (!notification) throw new AppError(404, 'NOT_FOUND', 'اعلان یافت نشد');
   if (notification.readAt) return notification;
 
   return prisma.notification.update({
-    where: { id: notificationId },
+    where: { id },
     data: { readAt: new Date() }
   });
 }
