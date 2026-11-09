@@ -70,6 +70,27 @@ export const updateUserSchema = z.object({
   isActive: booleanish.optional(),
 });
 
+export const listUsersQuery = paginationQuerySchema.extend({
+  search: z.preprocess(
+    emptyToUndefined,
+    z
+      .string({ invalid_type_error: 'search must be a string' })
+      .trim()
+      .max(120, 'search must be at most 120 characters')
+      .optional()
+  ),
+  role: z.preprocess(emptyToUndefined, roleEnum.optional()),
+  isActive: z.preprocess(emptyToUndefined, booleanish.optional()),
+  sortBy: z.preprocess(
+    emptyToUndefined,
+    z
+      .enum(['createdAt', 'fullName', 'email'], {
+        errorMap: () => ({ message: 'sortBy must be one of createdAt, fullName, email' }),
+      })
+      .default('createdAt')
+  ),
+});
+
 export const revenueQuerySchema = z
   .object({
     from: z.preprocess(emptyToUndefined, z.coerce.date().optional()),
@@ -191,16 +212,24 @@ export const createUserSchema = z.object({
 export const idParamSchema = z.object({
   id: z.preprocess(emptyToUndefined, z.coerce.number().int().positive('id must be a positive integer')),
 });
+
+// Aliases matching the names imported by backend/src/routes/admin.routes.js.
+export const updateUserBody = updateUserSchema;
+export const revenueQuery = revenueQuerySchema;
 export const listPaymentsQuery = paymentFilterSchema;
+
 export default {
   paginationQuerySchema,
+  listUsersQuery,
   updateUserSchema,
+  updateUserBody,
   revenueQuerySchema,
+  revenueQuery,
   paymentFilterSchema,
+  listPaymentsQuery,
   auditQuery,
   createPlanSchema,
   updatePlanSchema,
   createUserSchema,
   idParamSchema,
-  listPaymentsQuery,
 };
