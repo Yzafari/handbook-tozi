@@ -1,15 +1,46 @@
 import cron from 'node-cron';
+import { expireDueSubscriptions, sendExpiryReminders } from './subscription.service.js';
+import { expirePendingPayments } from './payment.service.js';
+import { env } from '../config/env.js';
+import logger from '../utils/logger.util.js';
+
+let isSubscriptionJobRunning = false;
+let isPaymentJobRunning = false;
 
 export function startCronJobs() {
-  // Schedule hourly subscription checks
+  // در محیط تست، کرون‌جاب‌ها اجرا نشوند
+  if (env.NODE_ENV === 'test') {
+    return;
+  }
+
+  logger.info('Cron jobs initialized.');
+
+  // ۱. هر ساعت: بررسی اشتراک‌های منقضی شده و ارسال یادآوری
   cron.schedule('0 * * * *', async () => {
-    console.log('Running hourly subscription checks...');
-    // Add your subscription check logic here
+    if (isSubscriptionJobRunning) return;
+    isSubscriptionJobRunning = true;
+    try {
+      logger.info('Running hourly subscription checks...');
+      await expireDueSubscriptions();
+      await sendExpiryReminders();
+    } catch (error) {
+      logger.error('Error in hourly subscription cron:', error);
+    } finally {
+      isSubscriptionJobRunning = false;
+    }
   });
 
-  // Schedule 5-minute payment expiry checks
+  // ۲. هر ۵ دقیقه: منقضی کردن پرداخت‌های معلق
   cron.schedule('*/5 * * * *', async () => {
-    console.log('Running 5-minute payment expiry checks...');
-    // Add your payment expiry check logic here
+    if (isPaymentJobRunning) return;
+    isPaymentJobRunning = true;
+    try {
+      logger.info('Running 5-minute payment expiry checks...');
+      await expirePendingPayments();
+    } catch (error) {
+      logger.error('Error in payment expiry cron:', error);
+    } finally {
+      isPaymentJobRunning = false;
+    }
   });
 }

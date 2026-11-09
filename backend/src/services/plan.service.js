@@ -1,5 +1,5 @@
-import { prisma } from '../prisma';
-import { toPublicPlan } from './utils';
+import { prisma } from '../prisma.js';
+
 
 export async function listActivePlans() {
   const plans = await prisma.plan.findMany({

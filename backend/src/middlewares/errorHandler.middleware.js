@@ -1,4 +1,4 @@
-import { AppError } from '../utils/response.util';
+import { AppError } from '../utils/response.util.js';
 import { ZodError } from 'zod';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import jwt from 'jsonwebtoken';

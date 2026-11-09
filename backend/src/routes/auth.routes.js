@@ -1,7 +1,9 @@
 import express from 'express';
-import { registerHandler, loginHandler, refreshHandler, logoutHandler, changePasswordHandler } from '../controllers/auth.controller';
-import { authLimiter, csrfProtect, authenticate } from '../middlewares';
-import { issueCsrfToken } from '../middlewares/security.middleware';
+import { registerHandler, loginHandler, refreshHandler, logoutHandler, changePasswordHandler } from '../controllers/auth.controller.js';
+import { authenticate } from '../middlewares/auth.middleware.js';
+import { authLimiter } from '../middlewares/rateLimit.middleware.js';
+import { csrfProtect } from '../middlewares/security.middleware.js';
+import { issueCsrfToken } from '../middlewares/security.middleware.js';
 
 const router = express.Router();
 

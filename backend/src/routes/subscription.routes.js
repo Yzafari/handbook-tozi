@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.use(authenticate);
 
-router.get('/me', subscriptionController.getMySubscription);
-router.post('/me/cancel', subscriptionController.cancelMySubscription);
+router.get('/me', subscriptionController.mySubscription);
+router.post('/me/cancel', subscriptionController.cancel);
 
 export default router;

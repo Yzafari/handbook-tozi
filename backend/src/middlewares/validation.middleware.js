@@ -1,4 +1,4 @@
-import { AppError } from '../utils/response.util';
+import { AppError } from '../utils/response.util.js';
 import { ZodError } from 'zod';
 
 // Express 5 exposes req.query as a getter-only property, so a plain assignment

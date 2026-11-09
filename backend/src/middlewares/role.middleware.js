@@ -1,4 +1,4 @@
-import { AppError } from '../utils/response.util';
+import { AppError } from '../utils/response.util.js';
 
 export function authorizeRoles(...roles) {
   return (req, res, next) => {

@@ -11,13 +11,14 @@ export const COOKIE = {
 export const CSRF_HEADER = 'X-CSRF-Token';
 
 export const AUTH = {
-  JWT_ACCESS_SECRET: 'your_jwt_access_secret',
-  JWT_REFRESH_SECRET: 'your_jwt_refresh_secret',
+  JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || 'dev_access_secret',
+  JWT_REFRESH_SECRET: process.env.ENCRYPTION_KEY || 'dev_refresh_secret',
 };
 
 export const PAYMENT = {
   STRIPE_SECRET_KEY: 'your_stripe_secret_key',
   STRIPE_PUBLISHABLE_KEY: 'your_stripe_publishable_key',
+  REMINDER_DAYS_BEFORE: 3,
 };
 
 export const AUDIT_ACTIONS = {

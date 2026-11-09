@@ -132,7 +132,10 @@ export async function expireDueSubscriptions() {
 
 export async function sendExpiryReminders() {
   const now = new Date();
-  const threshold = new Date(now.getTime() + PAYMENT.REMINDER_DAYS_BEFORE * DAY_MS);
+  
+  // خواندن از فایل تنظیمات با یک مقدار پشتیبان برای امنیت بیشتر
+  const reminderDays = PAYMENT?.REMINDER_DAYS_BEFORE ?? 3; 
+  const threshold = new Date(now.getTime() + (reminderDays * DAY_MS));
 
   const subs = await prisma.subscription.findMany({
     where: {
@@ -149,7 +152,7 @@ export async function sendExpiryReminders() {
       userId: sub.userId,
       type: 'SUBSCRIPTION_EXPIRING',
       title: 'یادآوری انقضا',
-      body: `اشتراک ${sub.plan?.name ?? ''} شما تا ${PAYMENT.REMINDER_DAYS_BEFORE} روز دیگر به پایان می‌رسد.`,
+      body: `اشتراک ${sub.plan?.name ?? ''} شما تا ${reminderDays} روز دیگر به پایان می‌رسد.`,
     });
 
     if (sub.user?.email) {
