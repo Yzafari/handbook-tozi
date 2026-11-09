@@ -153,10 +153,54 @@ export const paymentFilterSchema = paginationQuerySchema
       data.minAmountToman <= data.maxAmountToman,
     { message: 'minAmountToman must be less than or equal to maxAmountToman', path: ['minAmountToman'] }
   );
+export const auditQuery = z.object({
+  page: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).default(1)
+  ),
+  limit: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(100).default(10)
+  ),
+  adminId: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().positive().optional()
+  ),
+  action: z.preprocess(
+    emptyToUndefined,
+    z.string().optional()
+  ),
+});
+export const createPlanSchema = z.object({
+  name: z.string().min(2, 'name must be at least 2 characters'),
+  description: z.string().optional(),
+  price: z.number().int().positive('price must be a positive integer'),
+  durationDays: z.number().int().positive('durationDays must be a positive integer'),
+  isActive: z.boolean().optional(),
+});
 
+export const updatePlanSchema = createPlanSchema.partial();
+
+export const createUserSchema = z.object({
+  fullName: z.string().min(2, 'fullName must be at least 2 characters'),
+  email: z.string().email('email must be a valid email'),
+  password: z.string().min(6, 'password must be at least 6 characters'),
+  role: roleEnum.optional(),
+});
+
+export const idParamSchema = z.object({
+  id: z.preprocess(emptyToUndefined, z.coerce.number().int().positive('id must be a positive integer')),
+});
+export const listPaymentsQuery = paymentFilterSchema;
 export default {
   paginationQuerySchema,
   updateUserSchema,
   revenueQuerySchema,
   paymentFilterSchema,
+  auditQuery,
+  createPlanSchema,
+  updatePlanSchema,
+  createUserSchema,
+  idParamSchema,
+  listPaymentsQuery,
 };
