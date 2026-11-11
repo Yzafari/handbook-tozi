@@ -5,10 +5,12 @@ import { toPublicSubscription } from './subscription.service.js';
 import fs from 'fs';
 import path from 'path';
 
+const UPLOADS_ROOT = path.join(process.cwd(), 'uploads');
+
 export async function getMe(userId) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
-  
+
   let phone = null;
   if (user.phoneEncrypted) {
     try {
@@ -17,19 +19,35 @@ export async function getMe(userId) {
       phone = null;
     }
   }
-  
-  const { passwordHash, phoneEncrypted, ...publicUser } = user;
+
+  // The Prisma column is `password`, not `passwordHash`. Destructuring
+  // `passwordHash` (which does not exist) stripped nothing and leaked the real
+  // bcrypt hash in the response. Strip the real column plus the other internal
+  // auth fields that the client has no use for.
+  const { password, phoneEncrypted, failedLoginCount, lockedUntil, ...publicUser } = user;
   return { ...publicUser, phone };
 }
 
 export async function updateMe(userId, data) {
+  const existing = await prisma.user.findUnique({ where: { id: userId } });
+  if (!existing) throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
+
   const updateData = {};
-  if (data.fullName) updateData.fullName = data.fullName;
+
+  // The Prisma column is `name`. The API accepts `fullName` (used by the
+  // register form) and `name`; writing `fullName` straight to Prisma throws
+  // "Unknown argument" and turned PATCH /me into a 500.
+  const name = data.fullName ?? data.name;
+  if (name !== undefined) updateData.name = name;
   if (data.phone) updateData.phoneEncrypted = encrypt(data.phone);
+
+  if (Object.keys(updateData).length === 0) {
+    return getMe(userId);
+  }
 
   const updatedUser = await prisma.user.update({
     where: { id: userId },
-    data: updateData
+    data: updateData,
   });
 
   return getMe(updatedUser.id);
@@ -37,22 +55,26 @@ export async function updateMe(userId, data) {
 
 export async function saveAvatar(userId, file) {
   if (!file) throw new AppError(400, 'VALIDATION_ERROR', 'فایلی ارسال نشده است');
-  
+
   const oldUser = await prisma.user.findUnique({ where: { id: userId } });
-  
+  if (!oldUser) throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
+
   // حذف آواتار قبلی اگر وجود داشت
   if (oldUser.avatarUrl) {
-    const oldPath = path.join(process.cwd(), oldUser.avatarUrl);
-    if (fs.existsSync(oldPath)) {
+    // path.join (not path.resolve) so a leading "/" in avatarUrl is treated as
+    // relative to the project root, then resolve for the containment check.
+    const oldPath = path.resolve(path.join(process.cwd(), oldUser.avatarUrl));
+    // Only ever delete files that live inside the uploads directory.
+    if (oldPath.startsWith(path.resolve(UPLOADS_ROOT) + path.sep) && fs.existsSync(oldPath)) {
       fs.unlinkSync(oldPath);
     }
   }
 
   const avatarUrl = `/uploads/${file.filename}`;
-  
+
   const user = await prisma.user.update({
     where: { id: userId },
-    data: { avatarUrl }
+    data: { avatarUrl },
   });
 
   return { avatarUrl: user.avatarUrl };
@@ -60,24 +82,24 @@ export async function saveAvatar(userId, file) {
 
 export async function getDashboard(userId) {
   const now = new Date();
-  
+
   // ۱. اشتراک فعال
   const subscription = await prisma.subscription.findFirst({
     where: { userId, status: 'ACTIVE', endDate: { gt: now } },
-    include: { plan: true }
+    include: { plan: true },
   });
 
   // ۲. آمار پرداخت‌ها
   const payments = await prisma.payment.findMany({
-    where: { userId, status: 'COMPLETED' }
+    where: { userId, status: 'COMPLETED' },
   });
-  
+
   const totalPayments = payments.length;
   const totalSpentToman = payments.reduce((sum, p) => sum + p.amountToman, 0);
 
   // ۳. اعلان‌های خوانده نشده
   const unreadNotifications = await prisma.notification.count({
-    where: { userId, readAt: null }
+    where: { userId, readAt: null },
   });
 
   const publicSubscription = subscription ? toPublicSubscription(subscription) : null;
@@ -87,27 +109,27 @@ export async function getDashboard(userId) {
     stats: {
       totalPayments,
       totalSpentToman,
-      daysRemaining: publicSubscription?.daysRemaining ?? 0
+      daysRemaining: publicSubscription?.daysRemaining ?? 0,
     },
-    unreadNotifications
+    unreadNotifications,
   };
 }
 
 export async function listPayments(userId, page = 1, limit = 10) {
   const skip = (page - 1) * limit;
-  
+
   const [payments, total] = await Promise.all([
     prisma.payment.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       skip,
       take: limit,
-      include: { plan: true }
+      include: { plan: true },
     }),
-    prisma.payment.count({ where: { userId } })
+    prisma.payment.count({ where: { userId } }),
   ]);
 
-  const data = payments.map(p => ({
+  const data = payments.map((p) => ({
     id: p.id,
     planId: p.planId,
     planName: p.plan?.name ?? null,
@@ -116,7 +138,7 @@ export async function listPayments(userId, page = 1, limit = 10) {
     refId: p.refId,
     cardPanMasked: p.cardPanMasked,
     createdAt: p.createdAt,
-    verifiedAt: p.verifiedAt
+    verifiedAt: p.verifiedAt,
   }));
 
   return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
@@ -124,15 +146,15 @@ export async function listPayments(userId, page = 1, limit = 10) {
 
 export async function listNotifications(userId, page = 1, limit = 10) {
   const skip = (page - 1) * limit;
-  
+
   const [notifications, total] = await Promise.all([
     prisma.notification.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       skip,
-      take: limit
+      take: limit,
     }),
-    prisma.notification.count({ where: { userId } })
+    prisma.notification.count({ where: { userId } }),
   ]);
 
   return { data: notifications, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
@@ -145,7 +167,7 @@ export async function markNotificationRead(userId, notificationId) {
   }
 
   const notification = await prisma.notification.findFirst({
-    where: { id, userId }
+    where: { id, userId },
   });
 
   if (!notification) throw new AppError(404, 'NOT_FOUND', 'اعلان یافت نشد');
@@ -153,6 +175,6 @@ export async function markNotificationRead(userId, notificationId) {
 
   return prisma.notification.update({
     where: { id },
-    data: { readAt: new Date() }
+    data: { readAt: new Date() },
   });
 }
