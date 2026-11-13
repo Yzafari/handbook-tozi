@@ -10,7 +10,7 @@ const router = express.Router();
 router.post('/register', authLimiter, registerHandler);
 router.post('/login', authLimiter, loginHandler);
 router.post('/csrf-token', issueCsrfToken);
-router.post('/refresh', authLimiter, csrfProtect, refreshHandler);
+router.post('/refresh', authLimiter, refreshHandler);
 router.post('/logout', authLimiter, csrfProtect, logoutHandler);
 router.post('/change-password', authLimiter, authenticate, changePasswordHandler);
 

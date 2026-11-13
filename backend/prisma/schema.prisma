@@ -30,11 +30,16 @@ model User {
   password      String
   name          String?
   role          Role           @default(USER)
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   subscriptions Subscription[]
   payments      Payment[]
   adminLogs     AdminLog[]
+  refreshTokens RefreshToken[]
+  Notification  Notification[]
 }
 
 model Plan {
@@ -81,10 +86,33 @@ model Payment {
 
 model AdminLog {
   id        String   @id @default(cuid())
-  adminId   String
+  adminId   String?
   action    String
   details   String?
   createdAt DateTime @default(now())
   
-  admin     User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  admin     User?     @relation(fields: [adminId], references: [id], onDelete: SetNull)
 }
+model RefreshToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+  ip        String?
+  userAgent String?
+}
+model Notification {
+  id        Int    @id @default(autoincrement())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+

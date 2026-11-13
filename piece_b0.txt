@@ -1,0 +1,6 @@
+Start Piece B0. I need you to write the following files completely:
+1. backend/package.json
+2. src/config/env.js
+3. src/utils/response.util.js
+
+Please write backend/package.json first, completely, with no placeholders. After you finish it, stop and wait for me to say "next" to write the next file.

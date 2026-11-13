@@ -8,14 +8,17 @@ const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 // `secure` must be off in local dev, otherwise the browser silently drops the
 // cookie over plain HTTP and refresh/logout appear broken.
 function refreshCookieOptions() {
+  const isProduction = process.env.NODE_ENV === 'production';
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    // در محیط توسعه روی http نباید secure برابر با true باشد
+    secure: isProduction, 
+    sameSite: isProduction ? 'strict' : 'lax',
     path: '/',
     maxAge: REFRESH_COOKIE_MAX_AGE_MS,
   };
 }
+
 
 // The refresh token lives in an httpOnly cookie, so the browser cannot read it.
 // Fall back to the body only for non-browser clients (mobile, server-to-server).
@@ -29,11 +32,16 @@ export const registerHandler = asyncHandler(async (req, res) => {
 });
 
 export const loginHandler = asyncHandler(async (req, res) => {
-  const { accessToken, refreshToken, user } = await login(
-    req.body.email,
-    req.body.password,
-    req
-  );
+  const authResult = await login(req.body);
+  
+  // 👇 این خط را برای دیباگ اضافه کنید تا در ترمینال بک‌اند ببینید چه چیزی برمی‌گردد
+  console.log('AUTH RESULT FROM SERVICE:', authResult);
+
+  const { accessToken, refreshToken, user } = authResult;
+
+  if (!refreshToken) {
+    throw new Error('Refresh token is missing from auth service response!');
+  }
 
   res.cookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions());
   return ok(res, { token: accessToken, user }, 'Logged in successfully');

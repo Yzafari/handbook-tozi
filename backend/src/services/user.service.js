@@ -2,6 +2,7 @@ import prisma from '../config/database.js';
 import { AppError } from '../utils/response.util.js';
 import { encrypt, decrypt } from '../utils/hash.util.js';
 import { toPublicSubscription } from './subscription.service.js';
+import { PaymentStatus, SubscriptionStatus } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
 
@@ -83,15 +84,22 @@ export async function saveAvatar(userId, file) {
 export async function getDashboard(userId) {
   const now = new Date();
 
-  // ۱. اشتراک فعال
+  // ۱. اشتراک فعال (اصلاح شد با SubscriptionStatus.ACTIVE)
   const subscription = await prisma.subscription.findFirst({
-    where: { userId, status: 'ACTIVE', endDate: { gt: now } },
+    where: { 
+      userId, 
+      status: SubscriptionStatus.ACTIVE, 
+      endDate: { gt: now } 
+    },
     include: { plan: true },
   });
 
-  // ۲. آمار پرداخت‌ها
+  // ۲. آمار پرداخت‌ها (اصلاح شد با PaymentStatus.COMPLETED)
   const payments = await prisma.payment.findMany({
-    where: { userId, status: 'COMPLETED' },
+    where: { 
+      userId, 
+      status: PaymentStatus.COMPLETED 
+    },
   });
 
   const totalPayments = payments.length;
@@ -102,18 +110,19 @@ export async function getDashboard(userId) {
     where: { userId, readAt: null },
   });
 
-  const publicSubscription = subscription ? toPublicSubscription(subscription) : null;
+  const publicSubscription = subscription ? formatPublicSubscription(subscription) : null;
 
   return {
     subscription: publicSubscription,
     stats: {
       totalPayments,
       totalSpentToman,
-      daysRemaining: publicSubscription?.daysRemaining ?? 0,
+      daysRemaining: subscription ? Math.ceil((new Date(subscription.endDate) - now) / (1000 * 60 * 60 * 24)) : 0
     },
     unreadNotifications,
   };
 }
+
 
 export async function listPayments(userId, page = 1, limit = 10) {
   const skip = (page - 1) * limit;
