@@ -1,9 +1,9 @@
-import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext.jsx';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
 import Layout from '../components/layout/Layout.jsx';
 import DashboardLayout from '../components/layout/DashboardLayout.jsx';
 import AdminLayout from '../components/layout/AdminLayout.jsx';
+import ProtectedRoute from '../components/auth/ProtectedRoute.jsx';
 
 import Home from '../pages/Home.jsx';
 import Login from '../pages/Login.jsx';
@@ -13,6 +13,7 @@ import Profile from '../pages/Profile.jsx';
 import Pricing from '../pages/Pricing.jsx';
 import Checkout from '../pages/Checkout.jsx';
 import PaymentResult from '../pages/PaymentResult.jsx';
+import Unauthorized from '../pages/Unauthorized.jsx';
 import NotFound from '../pages/NotFound.jsx';
 
 import AdminDashboard from '../pages/admin/AdminDashboard.jsx';
@@ -21,51 +22,7 @@ import Payments from '../pages/admin/Payments.jsx';
 import AuditLogs from '../pages/admin/AuditLogs.jsx';
 import Documents from '../pages/admin/Documents.jsx';
 
-function RouteLoading() {
-  return (
-    <div
-      dir="rtl"
-      className="flex min-h-[50vh] items-center justify-center"
-      role="status"
-      aria-live="polite"
-    >
-      <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-        <span className="size-5 animate-spin rounded-full border-2 border-violet-600 border-t-transparent" />
-        در حال بررسی نشست کاربری...
-      </div>
-    </div>
-  );
-}
-
-function RequireAuth() {
-  const { isAuthenticated, isLoading } = useAuth();
-  const location = useLocation();
-
-  if (isLoading) return <RouteLoading />;
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
-  }
-
-  return <Outlet />;
-}
-
-function RequireAdmin() {
-  const { user, isAuthenticated, isLoading } = useAuth();
-  const location = useLocation();
-
-  if (isLoading) return <RouteLoading />;
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
-  }
-
-  if (!['ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  return <Outlet />;
-}
+const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN'];
 
 export function AppRoutes() {
   return (
@@ -76,9 +33,10 @@ export function AppRoutes() {
         <Route path="/register" element={<Register />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/payment/result" element={<PaymentResult />} />
+        <Route path="/unauthorized" element={<Unauthorized />} />
       </Route>
 
-      <Route element={<RequireAuth />}>
+      <Route element={<ProtectedRoute />}>
         <Route element={<DashboardLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/profile" element={<Profile />} />
@@ -87,7 +45,7 @@ export function AppRoutes() {
         </Route>
       </Route>
 
-      <Route element={<RequireAdmin />}>
+      <Route element={<ProtectedRoute allowedRoles={ADMIN_ROLES} />}>
         <Route element={<AdminLayout />}>
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/users" element={<Users />} />
