@@ -19,3 +19,4 @@ mobile/.cache/
 mobile/documents/
 *.pem
 *.key
+.aider*

@@ -658,3 +658,162 @@
 
 # 2026-11-11 12:12:31.632339
 +/exit
+
+# 2026-11-15 10:04:17.267676
++y
+
+# 2026-11-15 10:04:32.760583
++n
+
+# 2026-11-15 10:05:13.131976
++/add frontend/src/App.jsx frontend/src/context/ToastContext.jsx frontend/src/hooks/useToast.js frontend/src/components/common/Toast.jsx
+
+# 2026-11-15 10:05:16.960006
++y
+
+# 2026-11-15 10:07:24.010987
++You are a Senior Frontend Architect fixing the Toast system. I have added App.jsx, ToastContext.jsx, useToast.js, and Toast.jsx. Bug 1: App.jsx unconditionally renders an orphan <Toast /> component with no props, leaving a permanent empty box. Remove that orphan <Toast /> from App.jsx, but keep ToastProvider in main.jsx. Bug 2: Standardize ToastContext and hooks/useToast.js so that BOTH methods of calling toast work reliably: { showToast } (used in Documents.jsx) and { success, error, warning, info } (used in Users.jsx, Payments.jsx, AdminDashboard.jsx, etc.). Make sure the 'warning' style is supported cleanly. IMPORTANT: Only modify the 4 files I provided. Write 100% complete code without any placeholders. AUDIT: Code is complete.
+
+# 2026-11-15 10:07:27.875850
++y
+
+# 2026-11-15 10:22:20.003256
++/undo
+
+# 2026-11-15 10:31:33.924714
++/add frontend/src/context/ToastContext.jsx frontend/src/hooks/useToast.js frontend/src/components/common/Toast.jsx
+
+# 2026-11-15 10:32:21.743023
++\clear
+
+# 2026-11-15 10:32:49.898400
++/undo
+
+# 2026-11-15 10:33:50.489389
++/clear
+
+# 2026-11-15 10:34:26.819641
++/add frontend/src/context/ToastContext.jsx frontend/src/hooks/useToast.js frontend/src/components/common/Toast.jsx
+
+# 2026-11-15 10:35:10.002300
++You are a Senior Frontend Architect fixing the Toast system. WARNING: The ONLY correct folder path is 'frontend/'. Completely IGNORE any file paths containing 'frantend/' in your memory. I have added the correct 3 files: ToastContext.jsx, useToast.js, and Toast.jsx. Please standardize them so that BOTH { showToast } AND { success, error, warning, info } work reliably without crashing. Make sure the 'warning' style is supported cleanly. Only modify these 3 files. Write 100% complete code without placeholders. AUDIT: Code is complete.
+
+# 2026-11-15 10:36:57.171414
++/clear
+
+# 2026-11-15 10:37:18.588682
++/add frontend/src/utils/api.js frontend/src/services/api.js frontend/src/pages/Profile.jsx frontend/src/pages/Dashboard.jsx frontend/src/context/AuthContext.jsx
+
+# 2026-11-15 10:37:43.221835
++You are a Senior Frontend Architect fixing API and Profile issues. WARNING: The ONLY correct folder path is 'frontend/'. Completely IGNORE any file paths containing 'frantend/'. I have added utils/api.js, services/api.js, Profile.jsx, Dashboard.jsx, and AuthContext.jsx. Tasks: 1. Unify all imports to one canonical Axios instance from utils/api.js with refresh/CSRF interceptors (fix inconsistencies between utils/api.js and services/api.js). 2. In Profile.jsx: Remove hardcoded 'Content-Type': 'multipart/form-data' when posting FormData. Remove 'https://via.placeholder.com/100' and use a local SVG/initials avatar fallback. Revoke URL.createObjectURL on cleanup to avoid memory leaks. On password change, call logout() from AuthContext instead of localStorage.clear(). 3. In Dashboard.jsx: Replace alert(...) with toast.error(...) and compute the progress bar using stats?.daysRemaining ?? subscription?.daysRemaining ?? 0. IMPORTANT: Only modify these 5 files. Write 100% complete code without placeholders. AUDIT: Code is complete.
+
+# 2026-11-15 10:37:49.845661
++d
+
+# 2026-11-15 10:40:38.885459
++/clear
+
+# 2026-11-15 10:41:01.396674
++/add frontend/src/components/layout/DashboardLayout.jsx frontend/src/components/auth/ProtectedRoute.jsx frontend/src/routes/AppRoutes.jsx frontend/src/pages/Unauthorized.jsx
+
+# 2026-11-15 10:41:05.386393
++y
+
+# 2026-11-15 10:41:26.949088
++You are a Senior Frontend Architect fixing role and layout mismatches. WARNING: The ONLY correct folder path is 'frontend/'. Completely IGNORE any file paths containing 'frantend/'. I have added DashboardLayout.jsx, ProtectedRoute.jsx, and AppRoutes.jsx. Tasks: 1. In DashboardLayout.jsx, show the Admin Panel link for both ADMIN and SUPER_ADMIN roles. Ensure the user's name is read correctly using user?.fullName || user?.name. 2. Align ProtectedRoute.jsx with AppRoutes.jsx and ensure an /unauthorized route exists (if Unauthorized.jsx is missing, create a simple placeholder component for it). 3. Clean up any unused empty stub files (like components/layout/Header.jsx, Footer.jsx, layouts/AdminLayout.jsx) if they are completely empty. IMPORTANT: Only modify the files provided. Write 100% complete code without placeholders. AUDIT: Code is complete.
+
+# 2026-11-15 10:41:31.128213
++d
+
+# 2026-11-15 10:45:10.331274
++/exit
+
+# 2026-11-15 10:49:46.779467
++d
+
+# 2026-11-15 10:49:53.357342
++/add mobile/src/core/offline/repository.ts mobile/src/core/ocr/queue.ts mobile/src/app/camera.tsx mobile/src/core/sync/transport.ts
+
+# 2026-11-15 10:50:14.138444
++You are a Senior React Native Engineer fixing offline sync and OCR bugs. WARNING: The ONLY correct folder path is 'mobile/'. Completely IGNORE any other paths. I have added repository.ts, queue.ts, camera.tsx, and transport.ts. Tasks: 1. In repository.ts, fix queueOrUpdateOutbox: Only coalesce into an existing row if status = 'PENDING' AND retry_count = 0. Otherwise insert a new outbox row. 2. In queue.ts, camera.tsx, and transport.ts: Fix concurrent duplicate OCR uploads by adding an in-process per-user promise lock/queue inside syncOcrQueue. Claim rows atomically in SQLite (status = 'UPLOADING'). Remove redundant syncOcrQueue triggers from camera.tsx's polling loop. IMPORTANT: Only modify these 4 files. Write 100% complete code without placeholders. AUDIT: Code is complete.
+
+# 2026-11-15 10:53:18.514343
++/clear
+
+# 2026-11-15 10:54:02.475067
++/add mobile/src/core/modules/registry.ts mobile/src/core/modules/registry.js mobile/src/core/modules/registry.d.ts mobile/src/app/index.tsx mobile/package.json
+
+# 2026-11-15 10:54:11.541452
++You are a Senior React Native Engineer fixing module registry and Expo config issues. WARNING: The ONLY correct folder path is 'mobile/'. I have added registry.ts, registry.js, registry.d.ts, index.tsx, and package.json. Tasks: 1. Consolidate the module registry cleanly into a single TypeScript source of truth. Remove any name collisions between .ts, .js, and .d.ts files. 2. In index.tsx, ensure module labels safely fall back to item.label if t(moduleKeys[item.id]) is undefined. 3. Check if "type": "module" in package.json breaks Expo/Metro. If it does, remove it and adjust test files to use .mjs if necessary. Only modify these files. Write 100% complete code without placeholders. AUDIT: Code is complete.
+
+# 2026-11-15 10:54:15.237400
++d
+
+# 2026-11-15 10:58:38.039957
++/clear
+
+# 2026-11-15 10:58:50.323913
++/add mobile/src/core/auth/AuthContext.tsx
+
+# 2026-11-15 10:59:00.036313
++You are a Senior React Native Engineer fixing an auth session bug. WARNING: The ONLY correct folder path is 'mobile/'. I have added mobile/src/core/auth/AuthContext.tsx. Task: In updateProfile, PATCH /users/me currently calls restoreSession() and executes setSessionAuthenticated(Boolean(refreshed)). A transient network error during /auth/refresh disables autoSync even though the user is logged in. Fix this so transient network errors do not clear sessionAuthenticated when tokens are still valid. Only modify this file. Write 100% complete code without placeholders. AUDIT: Code is complete.
+
+# 2026-11-15 11:00:29.933857
++/clear
+
+# 2026-11-15 11:01:18.624712
++/add mobile/src/core/settings/AppSettingsContext.tsx mobile/src/app/index.tsx mobile/src/app/document/[id].tsx mobile/src/app/camera.tsx mobile/src/app/settings.tsx mobile/src/network/api.ts
+
+# 2026-11-15 11:01:22.268958
++y
+
+# 2026-11-15 11:02:11.651769
++You are a Senior React Native Engineer fixing localization and typos. WARNING: The ONLY correct folder path is 'mobile/'. I have added AppSettingsContext.tsx, index.tsx, document/[id].tsx, camera.tsx, settings.tsx, and network/api.ts. Tasks: 1. In AppSettingsContext.tsx, fix the Persian typo 'پانچ همکار' to 'پنج همکار'. 2. Move hardcoded Persian strings in index.tsx (like 'نسخه توسعه', 'ماشینحساب عمومی'), document/[id].tsx, camera.tsx, settings.tsx, and network/api.ts into t(...) translation keys for 'fa', 'ku', and 'en'. Only modify these files. Write 100% complete code without placeholders. AUDIT: Code is complete.
+
+# 2026-11-15 11:09:42.229741
++d
+
+# 2026-11-15 11:09:48.320774
++/add backend/prisma/schema.prisma
+
+# 2026-11-15 11:09:59.027885
++You are a Principal Backend Engineer. WARNING: The ONLY correct folder path is 'backend/'. I have added backend/prisma/schema.prisma. Task 1: Change `Payment.idempotencyKey String? @unique` to `@@unique([userId, idempotencyKey])` so one user cannot collide with another user's idempotency keys. Task 2: Check the User model. If we need to search users by phone number in the admin panel, add a `phoneHash String? @unique` field to the User model (this will be used as a blind index). Do NOT run any migrations or terminal commands. Only edit the schema file. Write 100% complete code without placeholders. AUDIT: Code is complete.
+
+# 2026-11-15 11:11:58.368812
++/exit
+
+# 2026-11-15 11:16:37.265430
++d
+
+# 2026-11-15 11:16:43.686645
++/add docker-compose.datacenter.yml Dockerfile.worker deploy/nginx/api.conf.example
+
+# 2026-11-15 11:18:50.296716
++n
+
+# 2026-11-15 11:19:28.038313
++/add backend/Dockerfile.worker
+
+# 2026-11-15 11:20:31.475159
++You are a Principal DevOps Engineer fixing infrastructure files. WARNING: The ONLY correct paths are provided in the chat. I have added backend/Dockerfile.worker, docker-compose.datacenter.yml, and deploy/nginx/api.conf.example. Tasks: 1. In backend/Dockerfile.worker, install the correct Tesseract OCR language for Sorani Kurdish (ckb / Arabic script) instead of Kurmanji (kmr). 2. In docker-compose.datacenter.yml, override the REDIS_URL in the workers' environment block to use the service name (redis://redis:6379) instead of localhost. 3. In deploy/nginx/api.conf.example, add a location /uploads/ block to serve user avatars properly behind Nginx. Only modify these 3 files. Write 100% complete code without placeholders. AUDIT: Code is complete.
+
+# 2026-11-15 11:21:07.715233
++y
+
+# 2026-11-15 11:25:18.512734
++/clear
+
+# 2026-11-15 11:25:51.088444
++/add backend/Dockerfile.worker docker-compose.datacenter.yml
+
+# 2026-11-15 11:38:03.206476
++/clear
+
+# 2026-11-15 11:38:22.485870
++/add backend/src/services/payment.service.js backend/src/services/user.service.js backend/src/config/env.js
+
+# 2026-11-15 11:38:44.286230
++You are a Principal Backend Security Engineer. WARNING: Do NOT scan the whole project. ONLY read and modify the 3 files I provided in the chat. I have added payment.service.js, user.service.js, and env.js. Tasks: 1. In payment.service.js, verify the idempotency race condition logic and ensure late callbacks (FAILED -> SUCCESS) only happen when the authority matches and subscription hasn't been granted yet. 2. In user.service.js, verify avatar upload magic-bytes validation and ensure path traversal is prevented on UPLOAD_DIR. 3. In env.js, verify that production mode requires HTTPS and strict CORS. Only modify these 3 files. Write 100% complete code without placeholders. AUDIT: Code is complete.
+
+# 2026-11-15 11:53:50.229111
++/exit
