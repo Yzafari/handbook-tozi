@@ -47,6 +47,7 @@ model User {
   updatedAt     DateTime       @updatedAt
   isActive      Boolean        @default(true)
   phoneEncrypted String?
+  phoneHash     String?        @unique
   avatarUrl     String?
   subscriptions Subscription[]
   payments      Payment[]
@@ -104,12 +105,13 @@ model Payment {
   cardPanMasked String?
   verifiedAt  DateTime?
   subscriptionId String?
-  idempotencyKey String?       @unique
+  idempotencyKey String?
   subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan        Plan          @relation(fields: [planId], references: [id])
 
+  @@unique([userId, idempotencyKey])
   @@index([status, createdAt])
   @@index([subscriptionId])
 }
