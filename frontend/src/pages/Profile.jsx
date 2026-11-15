@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import api from '../services/api';
+import api, { getErrorMessage } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../hooks/useToast';
 import StatusBadge from '../components/common/StatusBadge';
 import Pagination from '../components/common/Pagination';
 
@@ -16,13 +19,31 @@ const passwordSchema = z.object({
   newPassword: z.string().min(8, 'رمز عبور باید حداقل ۸ کاراکتر باشد'),
 });
 
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+// Local, dependency-free avatar fallback: initials derived from the user's name.
+const getInitials = (value) => {
+  const source = typeof value === 'string' ? value.trim() : '';
+  if (!source) return '؟';
+
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+};
+
 export default function Profile() {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const { logout } = useAuth();
+
   const [activeTab, setActiveTab] = useState('profile');
   const [user, setUser] = useState(null);
-  const [toast, setToast] = useState(null);
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [avatarLoading, setAvatarLoading] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const avatarInputRef = useRef(null);
 
   // Payments state
   const [payments, setPayments] = useState([]);
@@ -38,77 +59,108 @@ export default function Profile() {
     resolver: zodResolver(passwordSchema),
   });
 
-  const fetchUser = async () => {
+  const showToast = useCallback(
+    (message, type = 'success') => {
+      if (!message) return;
+      if (type === 'error') toast.error(message);
+      else if (type === 'warning') toast.warning(message);
+      else if (type === 'info') toast.info(message);
+      else toast.success(message);
+    },
+    [toast],
+  );
+
+  const fetchUser = useCallback(async () => {
     try {
       const res = await api.get('/users/me');
-      setUser(res.data.data.user || res.data.data);
+      const payload = res?.data?.data;
+      const currentUser = payload?.user ?? payload ?? null;
+      setUser(currentUser);
       resetProfile({
-        fullName: res.data.data.user?.fullName || res.data.data.fullName || '',
-        phone: res.data.data.user?.phone || res.data.data.phone || '',
+        fullName: currentUser?.fullName || '',
+        phone: currentUser?.phone || '',
       });
     } catch (err) {
-      console.error(err);
+      showToast(getErrorMessage(err), 'error');
     }
-  };
+  }, [resetProfile, showToast]);
 
-  const fetchPayments = async (p = 1) => {
+  const fetchPayments = useCallback(async (targetPage = 1) => {
     try {
       setPaymentsLoading(true);
-      const res = await api.get(`/users/me/payments?page=${p}&limit=10`);
-      setPayments(res.data.data);
-      setTotalPages(res.data.meta?.totalPages || 1);
+      const res = await api.get(`/users/me/payments?page=${targetPage}&limit=10`);
+      const payload = res?.data?.data;
+      const list = Array.isArray(payload) ? payload : payload?.items ?? [];
+      setPayments(list);
+      setTotalPages(res?.data?.meta?.totalPages ?? payload?.totalPages ?? 1);
     } catch (err) {
-      console.error(err);
+      showToast(getErrorMessage(err), 'error');
     } finally {
       setPaymentsLoading(false);
     }
-  };
+  }, [showToast]);
 
   useEffect(() => {
     fetchUser();
-    fetchPayments(page);
-  }, [page]);
+  }, [fetchUser]);
 
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
+  useEffect(() => {
+    fetchPayments(page);
+  }, [fetchPayments, page]);
+
+  // Revoke the object URL as soon as it is replaced or the component unmounts.
+  useEffect(() => {
+    if (!avatarPreview) return undefined;
+    return () => {
+      URL.revokeObjectURL(avatarPreview);
+    };
+  }, [avatarPreview]);
+
+  const avatarSrc = avatarPreview || user?.avatarUrl || null;
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [avatarSrc]);
 
   const onUpdateProfile = async (data) => {
     try {
       const res = await api.patch('/users/me', data);
-      setUser(res.data.data.user);
+      const payload = res?.data?.data;
+      const updatedUser = payload?.user ?? payload ?? null;
+      if (updatedUser) setUser(updatedUser);
       showToast('اطلاعات حساب با موفقیت بروز شد');
     } catch (err) {
-      showToast(err.response?.data?.error?.message || 'خطا در بروزرسانی اطلاعات', 'error');
+      showToast(getErrorMessage(err), 'error');
     }
   };
 
   const onChangePassword = async (data) => {
     try {
       await api.post('/auth/change-password', data);
-      showToast('رمز عبور تغییر کرد. در حال خروج...');
-      setTimeout(() => {
-        localStorage.clear();
-        window.location.href = '/login';
-      }, 2000);
+      resetPassword();
+      showToast('رمز عبور تغییر کرد. لطفاً دوباره وارد شوید.');
+      // Clear the session through AuthContext so React state and the in-memory
+      // access token are reset together (no localStorage.clear()).
+      await logout();
+      navigate('/login', { replace: true });
     } catch (err) {
-      showToast(err.response?.data?.error?.message || 'خطا در تغییر رمز عبور', 'error');
+      showToast(getErrorMessage(err), 'error');
     }
   };
 
   const handleAvatarChange = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
+    if (file.size > MAX_AVATAR_BYTES) {
       showToast('حجم فایل نباید بیشتر از ۲ مگابایت باشد', 'error');
+      e.target.value = '';
       return;
     }
 
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
+    if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
       showToast('فرمت فایل نامعتبر است (فقط JPG, PNG, WEBP)', 'error');
+      e.target.value = '';
       return;
     }
 
@@ -122,28 +174,28 @@ export default function Profile() {
       setAvatarLoading(true);
       const formData = new FormData();
       formData.append('avatar', avatarFile);
-      const res = await api.post('/users/me/avatar', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      setUser({ ...user, avatarUrl: res.data.data.avatarUrl });
-      showToast('تصویر پروفایل بروز شد');
+      // No manual Content-Type: the browser/axios must add the multipart boundary.
+      const res = await api.post('/users/me/avatar', formData);
+      const payload = res?.data?.data;
+      const avatarUrl = payload?.avatarUrl ?? payload?.user?.avatarUrl ?? null;
+
+      setUser((prev) => ({ ...(prev || {}), avatarUrl }));
       setAvatarFile(null);
+      setAvatarPreview(null);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+      showToast('تصویر پروفایل بروز شد');
     } catch (err) {
-      showToast(err.response?.data?.error?.message || 'خطا در آپلود تصویر', 'error');
+      showToast(getErrorMessage(err), 'error');
     } finally {
       setAvatarLoading(false);
     }
   };
 
+  const initials = getInitials(user?.fullName || user?.email);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6" dir="rtl">
       <h1 className="text-2xl font-bold text-gray-900">تنظیمات پروفایل و حساب</h1>
-
-      {toast && (
-        <div className={`p-4 rounded-lg text-sm font-medium ${toast.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
-          {toast.message}
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
@@ -173,15 +225,32 @@ export default function Profile() {
       {activeTab === 'profile' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6">
           <div className="flex items-center space-x-6 space-x-reverse">
-            <img
-              src={avatarPreview || user?.avatarUrl || 'https://via.placeholder.com/100'}
-              alt="Avatar"
-              className="w-20 h-20 rounded-full object-cover border border-gray-200"
-            />
+            {avatarSrc && !avatarFailed ? (
+              <img
+                src={avatarSrc}
+                alt="تصویر پروفایل"
+                onError={() => setAvatarFailed(true)}
+                className="w-20 h-20 rounded-full object-cover border border-gray-200"
+              />
+            ) : (
+              <div
+                role="img"
+                aria-label="تصویر پروفایل پیش‌فرض"
+                className="w-20 h-20 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 flex items-center justify-center text-xl font-semibold select-none"
+              >
+                {initials}
+              </div>
+            )}
             <div className="space-y-2">
-              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleAvatarChange} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100" />
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={handleAvatarChange}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100"
+              />
               {avatarFile && (
-                <button onClick={handleAvatarUpload} disabled={avatarLoading} className="px-4 py-1.5 bg-indigo-600 text-white text-xs rounded-md hover:bg-indigo-700">
+                <button onClick={handleAvatarUpload} disabled={avatarLoading} className="px-4 py-1.5 bg-indigo-600 text-white text-xs rounded-md hover:bg-indigo-700 disabled:opacity-50">
                   {avatarLoading ? 'در حال آپلود...' : 'ذخیره تصویر'}
                 </button>
               )}
@@ -202,7 +271,7 @@ export default function Profile() {
               <label className="block text-sm font-medium text-gray-700">شماره تماس</label>
               <input type="text" {...registerProfile('phone')} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-indigo-500" />
             </div>
-            <button type="submit" disabled={profileSubmitting} className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">
+            <button type="submit" disabled={profileSubmitting} className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50">
               {profileSubmitting ? 'در حال ذخیره...' : 'ذخیره تغییرات'}
             </button>
           </form>
@@ -224,7 +293,7 @@ export default function Profile() {
               <input type="password" {...registerPassword('newPassword')} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
               {passwordErrors.newPassword && <p className="text-xs text-red-600 mt-1">{passwordErrors.newPassword.message}</p>}
             </div>
-            <button type="submit" disabled={passwordSubmitting} className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">
+            <button type="submit" disabled={passwordSubmitting} className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50">
               {passwordSubmitting ? 'در حال تغییر...' : 'تغییر رمز عبور'}
             </button>
           </form>
@@ -258,7 +327,7 @@ export default function Profile() {
                   <tbody className="divide-y divide-gray-200 text-sm">
                     {payments.map((p) => (
                       <tr key={p.id}>
-                        <td className="py-3 px-4 text-gray-900 font-mono text-xs">{p.id.slice(0, 8)}</td>
+                        <td className="py-3 px-4 text-gray-900 font-mono text-xs">{String(p.id || '').slice(0, 8)}</td>
                         <td className="py-3 px-4 text-gray-900">{p.amountToman == null ? 'نامشخص' : p.amountToman.toLocaleString()}</td>
                         <td className="py-3 px-4"><StatusBadge status={p.status} /></td>
                         <td className="py-3 px-4 text-gray-500">{new Date(p.createdAt).toLocaleDateString('fa-IR')}</td>
@@ -273,7 +342,7 @@ export default function Profile() {
                 {payments.map((p) => (
                   <div key={p.id} className="border border-gray-200 rounded-lg p-4 space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="font-mono text-xs text-gray-500">{p.id.slice(0, 8)}</span>
+                      <span className="font-mono text-xs text-gray-500">{String(p.id || '').slice(0, 8)}</span>
                       <StatusBadge status={p.status} />
                     </div>
                     <div className="flex justify-between text-sm">

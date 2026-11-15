@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import api from '../utils/api';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import api, { getErrorMessage } from '../utils/api';
+import { useToast } from '../hooks/useToast';
 import StatusBadge from '../components/common/StatusBadge';
 
 export default function Dashboard() {
-  const navigate = useNavigate();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -12,23 +13,26 @@ export default function Dashboard() {
   const [canceling, setCanceling] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       const res = await api.get('/users/me/dashboard');
-      setDashboardData(res.data.data);
+      setDashboardData(res?.data?.data ?? null);
+
       const notifRes = await api.get('/users/me/notifications?limit=5');
-      setNotifications(notifRes.data.data);
+      const notifPayload = notifRes?.data?.data;
+      setNotifications(Array.isArray(notifPayload) ? notifPayload : notifPayload?.items ?? []);
     } catch (err) {
-      setError('خطا در دریافت اطلاعات داشبورد');
+      setError(getErrorMessage(err) || 'خطا در دریافت اطلاعات داشبورد');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchDashboard();
-  }, []);
+  }, [fetchDashboard]);
 
   const handleCancelSubscription = async () => {
     try {
@@ -37,7 +41,7 @@ export default function Dashboard() {
       setShowCancelModal(false);
       await fetchDashboard();
     } catch (err) {
-      alert(err.response?.data?.error?.message || 'خطا در لغو اشتراک');
+      toast.error(getErrorMessage(err) || 'خطا در لغو اشتراک');
     } finally {
       setCanceling(false);
     }
@@ -46,9 +50,11 @@ export default function Dashboard() {
   const handleMarkAsRead = async (id) => {
     try {
       await api.patch(`/users/me/notifications/${id}/read`);
-      setNotifications(notifications.map(n => n.id === id ? { ...n, readAt: new Date().toISOString() } : n));
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n)),
+      );
     } catch (err) {
-      console.error(err);
+      toast.error(getErrorMessage(err) || 'خطا در علامت‌گذاری اعلان');
     }
   };
 
@@ -76,7 +82,14 @@ export default function Dashboard() {
   }
 
   const { subscription, stats, unreadNotifications } = dashboardData || {};
-  const formattedEndsAt = subscription?.endsAt 
+
+  // Single source of truth for the remaining days: stats first, then the
+  // subscription record, then zero (never NaN).
+  const daysRemaining = stats?.daysRemaining ?? subscription?.daysRemaining ?? 0;
+  const planDurationDays = subscription?.plan?.durationDays || 30;
+  const progressPercent = Math.min(100, Math.max(0, (daysRemaining / planDurationDays) * 100));
+
+  const formattedEndsAt = subscription?.endsAt
     ? new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', calendar: 'persian' }).format(new Date(subscription.endsAt))
     : null;
 
@@ -98,7 +111,7 @@ export default function Dashboard() {
         </div>
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <p className="text-sm font-medium text-gray-500">روزهای باقی‌مانده اشتراک</p>
-          <p className="mt-2 text-3xl font-semibold text-indigo-600">{stats?.daysRemaining || 0} روز</p>
+          <p className="mt-2 text-3xl font-semibold text-indigo-600">{daysRemaining} روز</p>
         </div>
       </div>
 
@@ -119,9 +132,9 @@ export default function Dashboard() {
               <span className="text-gray-500">انقضا: {formattedEndsAt}</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2.5">
-              <div 
-                className="bg-indigo-600 h-2.5 rounded-full" 
-                style={{ width: `${Math.min(100, Math.max(0, (subscription.daysRemaining / (subscription.plan?.durationDays || 30)) * 100))}%` }}
+              <div
+                className="bg-indigo-600 h-2.5 rounded-full"
+                style={{ width: `${progressPercent}%` }}
               ></div>
             </div>
             <div className="flex space-x-3 space-x-reverse pt-2">
@@ -129,7 +142,7 @@ export default function Dashboard() {
                 تمدید / ارتقا
               </Link>
               {subscription.status === 'ACTIVE' && (
-                <button 
+                <button
                   onClick={() => setShowCancelModal(true)}
                   className="px-4 py-2 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50"
                 >
@@ -182,8 +195,8 @@ export default function Dashboard() {
               <button onClick={() => setShowCancelModal(false)} className="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50">
                 انصراف
               </button>
-              <button 
-                onClick={handleCancelSubscription} 
+              <button
+                onClick={handleCancelSubscription}
                 disabled={canceling}
                 className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50"
               >

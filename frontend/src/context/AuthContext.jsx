@@ -1,27 +1,31 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useState,
   useEffect,
   useRef,
 } from 'react';
 
-import { api, setAccessToken } from '../utils/api';
-import { fetchCsrfToken, refreshSession, logout as logoutSession } from '../services/auth.service';
+import { api, setAccessToken, refreshSession, ensureCsrfToken } from '../utils/api';
+import { logout as logoutSession } from '../services/auth.service';
 
 export const AuthContext = createContext(null);
+
+const isValidUser = (user) =>
+  Boolean(
+    user &&
+      typeof user === 'object' &&
+      user.id &&
+      user.email &&
+      user.role,
+  );
 
 function extractUser(response) {
   const data = response?.data?.data;
   const user = data?.user ?? data;
 
-  if (
-    !user ||
-    typeof user !== 'object' ||
-    !user.id ||
-    !user.email ||
-    !user.role
-  ) {
+  if (!isValidUser(user)) {
     throw new Error('اطلاعات کاربر از سرور دریافت نشد یا ناقص است.');
   }
 
@@ -53,33 +57,30 @@ export const AuthProvider = ({ children }) => {
 
     const checkAuth = async () => {
       try {
-        // مرحله 1: درخواست تمدید نشست
-        const csrf = await fetchCsrfToken();
-        const responseData = await refreshSession(csrf.csrfToken);
+        // مرحله 1: تمدید نشست با همان منطق مشترک utils/api.js
+        // (CSRF + refresh + ذخیره توکن، همه در یک نقطه).
+        const { user: refreshedUser } = await refreshSession();
 
-        // مرحله 2: استخراج امن توکن (سازگار با هر دو کلید token و accessToken)
-        const token = responseData?.token || responseData?.accessToken;
-
-        // مرحله 3: بررسی معتبر بودن توکن دریافتی
-        if (!token) {
-          throw new Error('Access Token دریافت نشد.');
+        // مرحله 2: اگر پاسخ رفرش کاربر را برنگرداند، آن را از سرور می‌گیریم.
+        let currentUser = refreshedUser;
+        if (!isValidUser(currentUser)) {
+          const response = await api.get('/users/me');
+          const payload = response?.data?.data;
+          currentUser = payload?.user ?? payload;
         }
 
-        // مرحله 4: استخراج اطلاعات کاربر
-        const currentUser = responseData?.user;
-        if (!currentUser?.id || !currentUser?.email || !currentUser?.role) throw new Error('اطلاعات کاربر از سرور دریافت نشد یا ناقص است.');
+        // مرحله 3: بررسی معتبر بودن اطلاعات کاربر
+        if (!isValidUser(currentUser)) {
+          throw new Error('اطلاعات کاربر از سرور دریافت نشد یا ناقص است.');
+        }
 
-        // مرحله 5: بررسی فعال بودن کامپوننت
+        // مرحله 4: بررسی فعال بودن کامپوننت
         if (!mounted || authVersion.current !== currentVersion) {
           return;
         }
 
-        // مرحله 6: ذخیره توکن در هدرهای پیش‌فرض Axios
-        setAccessToken(token);
-
-        // مرحله 7: تنظیم کاربر
+        // مرحله 5: تنظیم کاربر (توکن قبلاً توسط refreshSession ست شده است)
         setUser(currentUser);
-
       } catch (error) {
         // اگر رفرش ناموفق بود (یا کاربر لاگین نبود)، نشست پاک می‌شود
         if (mounted && authVersion.current === currentVersion) {
@@ -107,7 +108,7 @@ export const AuthProvider = ({ children }) => {
     });
 
     const currentUser = extractUser(response);
-    const token = response?.data?.data?.token;
+    const token = response?.data?.data?.token || response?.data?.data?.accessToken;
 
     if (!token) {
       throw new Error('توکن ورود از سرور دریافت نشد.');
@@ -130,16 +131,18 @@ export const AuthProvider = ({ children }) => {
     return extractUser(response);
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
-      const csrf = await fetchCsrfToken();
-      await logoutSession(csrf.csrfToken);
+      const csrfToken = await ensureCsrfToken();
+      await logoutSession(csrfToken);
+    } catch (error) {
+      // شکست شبکه یا CSRF نباید مانع پاک شدن نشست محلی شود.
     } finally {
       authVersion.current += 1;
       setUser(null);
       setAccessToken(null);
     }
-  };
+  }, []);
 
   return (
     <AuthContext.Provider
