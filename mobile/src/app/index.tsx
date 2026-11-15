@@ -34,7 +34,7 @@ export default function HomeScreen() {
           </Pressable>
           <View style={[styles.brand, direction === 'ltr' && styles.brandLtr]}>
             <Text style={[styles.brandTitle, isDark && styles.textDark]}>{t('appName')}</Text>
-            <Text style={[styles.brandSubtitle, isDark && styles.mutedDark]}>{user?.name ? (direction === 'rtl' ? `سلام، ${user.name}` : `Hello, ${user.name}`) : t('greeting')}</Text>
+            <Text style={[styles.brandSubtitle, isDark && styles.mutedDark]}>{user?.name ? t('greetingWithName', { name: user.name }) : t('greeting')}</Text>
           </View>
         </View>
 
@@ -89,9 +89,9 @@ export default function HomeScreen() {
         <View style={[styles.departments, direction === 'ltr' && styles.rowLtr]}>
           {departments.map(item => <View key={item.key} style={[styles.department, isDark && styles.departmentDark]}><Text style={[styles.departmentText, isDark && styles.textDark]}>{item.label}</Text></View>)}
         </View>
-        <Text style={[styles.footer, isDark && styles.mutedDark]}>نسخهٔ توسعه · {t('appName')}</Text>
+        <Text style={[styles.footer, isDark && styles.mutedDark]}>{t('devVersion')} · {t('appName')}</Text>
       </ScrollView>
-      <Pressable style={[styles.floatingCalculator, isDark && styles.floatingCalculatorDark]} onPress={() => router.push('/calculator')} accessibilityRole="button" accessibilityLabel="ماشین‌حساب عمومی"><Text style={styles.floatingCalculatorIcon}>🧮</Text></Pressable>
+      <Pressable style={[styles.floatingCalculator, isDark && styles.floatingCalculatorDark]} onPress={() => router.push('/calculator')} accessibilityRole="button" accessibilityLabel={t('calculator')}><Text style={styles.floatingCalculatorIcon}>🧮</Text></Pressable>
     </SafeAreaView>
   );
 }

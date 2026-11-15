@@ -10,8 +10,8 @@ export default function SettingsScreen() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const palette = isDark ? dark : light;
-  const chooseLanguage = async (value: AppLanguage) => { try { setError(''); await setLanguage(value); setSaved(true); } catch { setError('ذخیرهٔ زبان ناموفق بود.'); } };
-  const chooseTheme = async (value: AppTheme) => { try { setError(''); await setTheme(value); setSaved(true); } catch { setError('ذخیرهٔ پوسته ناموفق بود.'); } };
+  const chooseLanguage = async (value: AppLanguage) => { try { setError(''); await setLanguage(value); setSaved(true); } catch { setError(t('languageSaveError')); } };
+  const chooseTheme = async (value: AppTheme) => { try { setError(''); await setTheme(value); setSaved(true); } catch { setError(t('themeSaveError')); } };
   const languages: Array<{ value: AppLanguage; label: string }> = [{ value: 'fa', label: t('persian') }, { value: 'ku', label: t('kurdish') }, { value: 'en', label: t('english') }];
   const themes: Array<{ value: AppTheme; label: string }> = [{ value: 'auto', label: t('autoTheme') }, { value: 'system', label: t('systemTheme') }, { value: 'light', label: t('lightTheme') }, { value: 'dark', label: t('darkTheme') }];
 

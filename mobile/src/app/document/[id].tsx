@@ -62,7 +62,7 @@ export default function DocumentScreen() {
           await cacheDocument({ userId, documentId: String(id), metadata: latest });
         }
       } catch (e: any) {
-        if (active && !cached) setError(e?.response?.data?.error?.message || 'مشخصات سند آنلاین در دسترس نیست.');
+        if (active && !cached) setError(e?.response?.data?.error?.message || t('documentOnlineUnavailable'));
       } finally { if (active) setLoading(false); }
     };
     void load();
@@ -79,10 +79,10 @@ export default function DocumentScreen() {
       } else {
         const response = await api.get(`/documents/${encodeURIComponent(String(id))}/open-link`);
         const url = response.data?.data?.url;
-        if (!url) throw new Error('پیوند موقت سند از سرور دریافت نشد');
+        if (!url) throw new Error(t('documentLinkError'));
         await Linking.openURL(params.page ? `${url}#page=${encodeURIComponent(String(params.page))}` : url);
       }
-    } catch (e: any) { setError(e?.response?.data?.error?.message || e?.message || 'بازکردن سند ناموفق بود.'); }
+    } catch (e: any) { setError(e?.response?.data?.error?.message || e?.message || t('documentOpenError')); }
     finally { setWorking(false); }
   };
 
@@ -92,7 +92,7 @@ export default function DocumentScreen() {
     try {
       const response = await api.get(`/documents/${encodeURIComponent(String(id))}/open-link`);
       const url = response.data?.data?.url;
-      if (!url) throw new Error('پیوند دریافت فایل ساخته نشد');
+      if (!url) throw new Error(t('documentDownloadLinkError'));
       const directory = `${FileSystem.documentDirectory}handbook-documents/`;
       await FileSystem.makeDirectoryAsync(directory, { intermediates: true }).catch(() => {});
       const extension = document.mimeType === 'application/pdf' ? 'pdf' : document.mimeType === 'image/png' ? 'png' : document.mimeType === 'image/webp' ? 'webp' : document.mimeType === 'image/jpeg' ? 'jpg' : 'txt';
@@ -105,12 +105,12 @@ export default function DocumentScreen() {
       catch (downloadError) { await FileSystem.deleteAsync(temporary, { idempotent: true }).catch(() => {}); throw downloadError; }
       if (result.status < 200 || result.status >= 300) {
         await FileSystem.deleteAsync(temporary, { idempotent: true });
-        throw new Error(`دریافت فایل ناموفق بود (${result.status})`);
+        throw new Error(t('documentDownloadFailed', { status: result.status }));
       }
       const downloaded = await FileSystem.getInfoAsync(temporary);
       if (!downloaded.exists || !Number.isFinite(downloaded.size) || downloaded.size !== document.sizeBytes) {
         await FileSystem.deleteAsync(temporary, { idempotent: true });
-        throw new Error('اندازه فایل دریافت‌شده با مشخصات سند مطابقت ندارد؛ نسخه قبلی حفظ شد.');
+        throw new Error(t('documentSizeMismatch'));
       }
       try { await FileSystem.moveAsync({ from: temporary, to: destination }); }
       catch (moveError) { await FileSystem.deleteAsync(temporary, { idempotent: true }).catch(() => {}); throw moveError; }
@@ -128,7 +128,7 @@ export default function DocumentScreen() {
         await removeCachedDocument(userId, item.documentId).catch(() => {});
       }
       setLocalUri(destination); setOfflineVersionStale(false);
-    } catch (e: any) { setError(e?.response?.data?.error?.message || e?.message || 'ذخیره آفلاین سند ناموفق بود.'); }
+    } catch (e: any) { setError(e?.response?.data?.error?.message || e?.message || t('documentSaveOfflineError')); }
     finally { setWorking(false); }
   };
 
@@ -142,7 +142,7 @@ export default function DocumentScreen() {
       const filePrefix = `${safeFileSegment(userId)}_${safeFileSegment(String(id))}`;
       await cleanupDocumentFiles(directory, filePrefix);
       setLocalUri(null);
-    } catch (e: any) { setError(e?.message || 'حذف نسخه آفلاین ناموفق بود.'); }
+    } catch (e: any) { setError(e?.message || t('documentRemoveOfflineError')); }
     finally { setWorking(false); }
   };
 

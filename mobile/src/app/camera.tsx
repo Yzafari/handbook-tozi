@@ -49,7 +49,7 @@ export default function CameraScreen() {
     setCapturing(true); setError('');
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.82, skipProcessing: false });
-      if (!photo?.uri) throw new Error('تصویر دوربین دریافت نشد');
+      if (!photo?.uri) throw new Error(t('cameraPhotoError'));
       // Copy into the app's persistent documents directory before any network request.
       const local = await enqueueOcrPhoto(user.id, photo.uri);
       setJob(local);
