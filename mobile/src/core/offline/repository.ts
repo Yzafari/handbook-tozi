@@ -9,9 +9,12 @@ async function queueOrUpdateOutbox(db: Awaited<ReturnType<typeof getDatabase>>, 
   operationId: string; userId: string; moduleName: string; entityType: string; entityId: string;
   operation: 'CREATE' | 'UPDATE'; baseVersion?: number; payload: unknown; now: string;
 }) {
+  // Only coalesce into a row that has never been attempted. A row that already
+  // failed a push (retry_count > 0) or is mid-flight (RETRY) must be left alone
+  // so its retry bookkeeping and payload stay consistent with what the server saw.
   const pending = await db.getFirstAsync<{ operation_id: string }>(
     `SELECT operation_id FROM outbox WHERE owner_user_id=? AND module_name=? AND entity_type=? AND entity_id=?
-     AND status IN ('PENDING','RETRY') ORDER BY created_at DESC LIMIT 1`,
+     AND status='PENDING' AND COALESCE(retry_count,0)=0 ORDER BY created_at DESC LIMIT 1`,
     [values.userId, values.moduleName, values.entityType, values.entityId],
   );
   if (pending) {

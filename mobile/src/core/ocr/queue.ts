@@ -14,6 +14,14 @@ function mapRow(row: any): LocalOcrJob {
     errorMessage: row.error_message, createdAt: row.created_at };
 }
 
+// In-process, per-user lock. Every caller (auto-sync, camera capture, camera retry)
+// shares a single in-flight pass so the same row can never be uploaded twice.
+const OCR_SYNC_LOCKS = new Map<string, Promise<void>>();
+
+// A row claimed as UPLOADING for longer than this is considered abandoned
+// (app killed / crashed mid-upload) and is released back to the retry queue.
+const UPLOAD_CLAIM_TIMEOUT_MS = 10 * 60 * 1000;
+
 export async function enqueueOcrPhoto(userId: string, sourceUri: string): Promise<LocalOcrJob> {
   if (!FileSystem.documentDirectory) throw new Error('فضای پایدار ذخیره‌سازی فایل در دسترس نیست');
   const directory = `${FileSystem.documentDirectory}handbook-ocr/`;
@@ -42,14 +50,30 @@ export async function getOcrJobLocal(userId: string, localId: string): Promise<L
   return row ? mapRow(row) : null;
 }
 
-export async function syncOcrQueue(userId: string): Promise<void> {
+async function runOcrSync(userId: string): Promise<void> {
   const db = await getDatabase();
   const now = new Date().toISOString();
+
+  // Release claims abandoned by a previous process so they can be retried.
+  await db.runAsync(
+    `UPDATE ocr_queue SET status='RETRY_UPLOAD', next_attempt_at=NULL, updated_at=?
+     WHERE owner_user_id=? AND status='UPLOADING' AND updated_at<=?`,
+    [now, userId, new Date(Date.now() - UPLOAD_CLAIM_TIMEOUT_MS).toISOString()],
+  );
+
   const uploadRows = await db.getAllAsync<any>(
     `SELECT * FROM ocr_queue WHERE owner_user_id=? AND status IN ('PENDING_UPLOAD','RETRY_UPLOAD')
      AND (next_attempt_at IS NULL OR next_attempt_at<=?) ORDER BY created_at ASC LIMIT 5`, [userId, now]);
 
   for (const row of uploadRows) {
+    // Atomic claim: only the caller whose UPDATE actually changed the row may upload it.
+    const claim = await db.runAsync(
+      `UPDATE ocr_queue SET status='UPLOADING', updated_at=?
+       WHERE local_id=? AND owner_user_id=? AND status IN ('PENDING_UPLOAD','RETRY_UPLOAD')`,
+      [new Date().toISOString(), row.local_id, userId],
+    );
+    if (Number(claim?.changes ?? 0) !== 1) continue;
+
     try {
       const info = await FileSystem.getInfoAsync(row.local_uri);
       if (!info.exists) throw new Error('تصویر ذخیره‌شده روی گوشی پیدا نشد');
@@ -58,12 +82,12 @@ export async function syncOcrQueue(userId: string): Promise<void> {
       const response = await api.post('/ocr', form, { timeout: 45000 });
       const remoteJobId = response.data?.data?.id;
       if (!remoteJobId) throw new Error('شناسه درخواست OCR از سرور دریافت نشد');
-      await db.runAsync("UPDATE ocr_queue SET remote_job_id=?,status='UPLOADED',retry_count=0,next_attempt_at=NULL,error_message=NULL,updated_at=? WHERE local_id=? AND owner_user_id=?",
+      await db.runAsync("UPDATE ocr_queue SET remote_job_id=?,status='UPLOADED',retry_count=0,next_attempt_at=NULL,error_message=NULL,updated_at=? WHERE local_id=? AND owner_user_id=? AND status='UPLOADING'",
         [remoteJobId, new Date().toISOString(), row.local_id, userId]);
     } catch (error: any) {
       const retries = Number(row.retry_count) + 1;
       const delay = Math.min(6 * 60 * 60 * 1000, 2000 * (2 ** Math.min(retries, 12)));
-      await db.runAsync("UPDATE ocr_queue SET status='RETRY_UPLOAD',retry_count=?,next_attempt_at=?,error_message=?,updated_at=? WHERE local_id=? AND owner_user_id=?",
+      await db.runAsync("UPDATE ocr_queue SET status='RETRY_UPLOAD',retry_count=?,next_attempt_at=?,error_message=?,updated_at=? WHERE local_id=? AND owner_user_id=? AND status='UPLOADING'",
         [retries, new Date(Date.now() + delay).toISOString(), String(error?.response?.data?.error?.message || error?.message || 'خطای شبکه').slice(0, 400), new Date().toISOString(), row.local_id, userId]);
     }
   }
@@ -80,6 +104,19 @@ export async function syncOcrQueue(userId: string): Promise<void> {
         [status, remote.resultText ?? null, remote.confidence ?? null, remote.errorMessage ?? null, new Date().toISOString(), row.local_id, userId]);
     } catch { /* Keep the local job and retry status polling on the next sync cycle. */ }
   }
+}
+
+export function syncOcrQueue(userId: string): Promise<void> {
+  if (!userId) return Promise.resolve();
+  const existing = OCR_SYNC_LOCKS.get(userId);
+  if (existing) return existing;
+  const run = runOcrSync(userId);
+  OCR_SYNC_LOCKS.set(userId, run);
+  const release = () => {
+    if (OCR_SYNC_LOCKS.get(userId) === run) OCR_SYNC_LOCKS.delete(userId);
+  };
+  run.then(release, release);
+  return run;
 }
 
 export async function retryOcrJobLocal(userId: string, localId: string): Promise<void> {

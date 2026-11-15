@@ -30,14 +30,15 @@ export default function CameraScreen() {
     if (!job?.localId || !user?.id) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
+    // Read-only local polling. Uploads/status refreshes are driven by capture(),
+    // retry() and the background auto-sync, never by this timer.
     const pollLocal = async () => {
       const latest = await getOcrJobLocal(user.id, job.localId).catch(() => null);
       if (!active) return;
       if (latest) setJob(latest);
-      if (latest && !['DONE', 'FAILED', 'CANCELLED'].includes(latest.status)) timer = setTimeout(async () => {
-        if (latest.status === 'UPLOADED' || latest.status === 'RUNNING' || latest.status === 'RETRY_UPLOAD') await syncOcrQueue(user.id).catch(() => {});
-        await pollLocal();
-      }, 4000);
+      if (latest && !['DONE', 'FAILED', 'CANCELLED'].includes(latest.status)) {
+        timer = setTimeout(pollLocal, 4000);
+      }
     };
     timer = setTimeout(pollLocal, 800);
     return () => { active = false; clearTimeout(timer); };
@@ -53,7 +54,14 @@ export default function CameraScreen() {
       const local = await enqueueOcrPhoto(user.id, photo.uri);
       setJob(local);
       await syncOcrQueue(user.id);
-      const latest = await getOcrJobLocal(user.id, local.localId);
+      let latest = await getOcrJobLocal(user.id, local.localId);
+      // The first call may have joined an already-running pass that had not yet
+      // seen this row; one follow-up pass picks it up. The per-user lock plus the
+      // atomic UPLOADING claim guarantee this cannot double-upload.
+      if (latest && (latest.status === 'PENDING_UPLOAD' || latest.status === 'RETRY_UPLOAD')) {
+        await syncOcrQueue(user.id).catch(() => {});
+        latest = await getOcrJobLocal(user.id, local.localId);
+      }
       if (latest) setJob(latest);
     } catch (e: any) {
       setError(e?.message || t('cameraCaptureError'));

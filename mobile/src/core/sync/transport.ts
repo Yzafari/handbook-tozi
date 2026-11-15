@@ -18,6 +18,13 @@ type PullRecord = {
 
 type PullPage = { items: PullRecord[]; nextCursor: string | null; hasMore: boolean };
 
+type SyncResult = { accepted: number; conflicts: number; pulled: number };
+
+// In-process, per-user lock so concurrent runSync callers (auto-sync, manual
+// refresh, conflict resolution) share one pass instead of duplicating push/pull
+// and OCR work.
+const ACTIVE_SYNCS = new Map<string, Promise<SyncResult>>();
+
 const transport = {
   async push(operations: OutboxOperation[]): Promise<PushResult> {
     const response = await api.post('/sync/push', { operations });
@@ -89,8 +96,7 @@ async function applyRemotePage(userId: string, records: PullRecord[]): Promise<v
   });
 }
 
-export async function runSync(userId: string): Promise<{ accepted: number; conflicts: number; pulled: number }> {
-  if (!userId) throw new Error('برای همگام‌سازی شناسه کاربر الزامی است');
+async function performSync(userId: string): Promise<SyncResult> {
   let accepted = 0;
   let conflicts = 0;
   for (let batch = 0; batch < 10; batch += 1) {
@@ -122,6 +128,19 @@ export async function runSync(userId: string): Promise<{ accepted: number; confl
     if (!page.items.length) break;
   }
   return { accepted, conflicts, pulled };
+}
+
+export function runSync(userId: string): Promise<SyncResult> {
+  if (!userId) throw new Error('برای همگام‌سازی شناسه کاربر الزامی است');
+  const existing = ACTIVE_SYNCS.get(userId);
+  if (existing) return existing;
+  const run = performSync(userId);
+  ACTIVE_SYNCS.set(userId, run);
+  const release = () => {
+    if (ACTIVE_SYNCS.get(userId) === run) ACTIVE_SYNCS.delete(userId);
+  };
+  run.then(release, release);
+  return run;
 }
 
 
