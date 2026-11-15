@@ -68,14 +68,31 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
 
   const updateProfile = useCallback(async (patch: { province?: string; jobRole?: string }) => {
     const response = await api.patch('/users/me', patch);
-    const updated = response.data?.data?.user as AuthUser;
-    if (updated) {
+    const updated = response.data?.data?.user as AuthUser | undefined;
+    if (!updated) return;
+
+    // The PATCH above succeeded with a valid access token, so the user is
+    // authenticated. Refreshing the session here is best-effort: a transient
+    // network failure while calling /auth/refresh must not sign the user out
+    // or stop auto-sync. Only a successful refresh updates the cached user and
+    // (re)confirms the session; a failed one leaves `sessionAuthenticated`
+    // untouched. If the refresh token was actually rejected, the API layer
+    // clears it and the auth-expired handler flips `sessionAuthenticated` on
+    // the next 401 response.
+    let current: AuthUser = updated;
+    try {
       const refreshed = await restoreSession();
-      const current = (refreshed?.user as AuthUser | undefined) ?? updated;
-      setUser(current);
-      setSessionAuthenticated(Boolean(refreshed));
-      await saveCachedUser(current);
+      const refreshedUser = refreshed?.user as AuthUser | undefined;
+      if (refreshedUser) {
+        current = refreshedUser;
+        setSessionAuthenticated(true);
+      }
+    } catch {
+      // Transient failure: keep the existing session state.
     }
+
+    setUser(current);
+    await saveCachedUser(current);
   }, []);
 
   const logout = useCallback(async () => {
