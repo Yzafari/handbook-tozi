@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "name": "sync",
+  "version": "1.0.0",
+  "basePath": "/sync",
+  "dependencies": [],
+  "requires": [
+    "auth",
+    "postgresql"
+  ]
+}

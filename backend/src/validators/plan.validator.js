@@ -1,19 +1,14 @@
 import { z } from 'zod';
 
 export const createPlanSchema = z.object({
-  name: z.string().min(1).max(255).nonempty(),
-  description: z.string().min(1).max(255).nonempty(),
-  price: z.number().positive(),
-  duration: z.number().positive(),
+  name: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(500).nullable().optional(),
+  price: z.number().int().nonnegative(),
+  durationDays: z.number().int().positive().max(3650),
+  isActive: z.boolean().optional(),
 });
 
-export const updatePlanSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  description: z.string().min(1).max(255).optional(),
-  price: z.number().positive().optional(),
-  duration: z.number().positive().optional(),
-});
+export const updatePlanSchema = createPlanSchema.partial();
+export const idParamSchema = z.object({ id: z.string().trim().min(1).max(128) });
 
-export const idParamSchema = z.object({
-  id: z.string().uuid(),
-});
+export default { createPlanSchema, updatePlanSchema, idParamSchema };

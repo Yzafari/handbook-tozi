@@ -6,9 +6,10 @@ import * as paymentController from '../controllers/payment.controller.js';
 
 const router = express.Router();
 
-// Public: Zarinpal redirects the user's browser here, so no auth.
-// Must be registered before '/:id' or it will be matched as an id.
+// Gateway callback is a browser redirect and is validated by authority verification.
 router.get('/verify', paymentController.verifyCallback);
+// Optional server-to-server adapter endpoint. Zarinpal v4 does not itself guarantee webhook delivery.
+router.post('/webhook', paymentController.webhookHandler);
 
 router.use(authenticate);
 

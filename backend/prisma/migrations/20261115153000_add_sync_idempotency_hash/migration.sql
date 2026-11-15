@@ -1,0 +1,1 @@
+ALTER TABLE "SyncOperation" ADD COLUMN IF NOT EXISTS "requestHash" TEXT NOT NULL DEFAULT '';

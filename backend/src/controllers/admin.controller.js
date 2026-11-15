@@ -7,7 +7,7 @@ export const getStats = asyncHandler(async (req, res) => {
 });
 
 export const getRevenueSeries = asyncHandler(async (req, res) => {
-  return ok(res, await adminService.getRevenueSeries(req.query.days));
+  return ok(res, await adminService.getRevenueSeries(req.query));
 });
 
 export const listUsers = asyncHandler(async (req, res) => {

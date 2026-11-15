@@ -15,7 +15,7 @@ export const getMe = asyncHandler(async (req, res) => {
 
 export const updateMe = asyncHandler(async (req, res) => {
   const user = await userService.updateMe(req.user.id, req.body);
-  return ok(res, user, 'پروفایل با موفقیت به‌روزرسانی شد');
+  return ok(res, { user }, 'پروفایل با موفقیت به‌روزرسانی شد');
 });
 
 export const uploadAvatar = asyncHandler(async (req, res) => {

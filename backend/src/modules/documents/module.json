@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "name": "documents",
+  "version": "1.0.0",
+  "basePath": "/documents",
+  "dependencies": [],
+  "requires": [
+    "auth",
+    "datacenter-storage",
+    "postgresql"
+  ]
+}

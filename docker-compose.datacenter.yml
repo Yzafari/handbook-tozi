@@ -1,0 +1,104 @@
+# Development / single-host staging only.
+# Production must place these services on a private network and enable TLS/authentication.
+services:
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - handbook_search_data:/usr/share/opensearch/data
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD}", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - handbook_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  document-storage:
+    build:
+      context: ./datacenter
+    environment:
+      NODE_ENV: production
+      DATACENTER_PORT: 8081
+      DATACENTER_STORAGE_DIR: /var/lib/handbook-documents
+      DATACENTER_INTERNAL_TOKEN: ${DATACENTER_INTERNAL_TOKEN:?Set DATACENTER_INTERNAL_TOKEN in your shell or .env}
+      DATACENTER_SIGNING_SECRET: ${DATACENTER_SIGNING_SECRET:?Set DATACENTER_SIGNING_SECRET in your shell or .env}
+      DATACENTER_MAX_FILE_BYTES: ${DATACENTER_MAX_FILE_BYTES:-104857600}
+    ports:
+      - "127.0.0.1:8081:8081"
+    volumes:
+      - handbook_document_data:/var/lib/handbook-documents
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8081/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  document-index-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: ${WORKER_DATABASE_URL:?Set WORKER_DATABASE_URL for the worker container}
+      DATACENTER_URL: http://document-storage:8081
+      OPENSEARCH_URL: http://opensearch:9200
+    command: ["node", "src/workers/document-index.worker.js"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      document-storage:
+        condition: service_healthy
+    cpus: 1.0
+    mem_limit: 2g
+    pids_limit: 256
+    restart: unless-stopped
+
+  ocr-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: ${WORKER_DATABASE_URL:?Set WORKER_DATABASE_URL for the worker container}
+      DATACENTER_URL: http://document-storage:8081
+      OPENSEARCH_URL: http://opensearch:9200
+    command: ["node", "src/workers/ocr.worker.js"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      document-storage:
+        condition: service_healthy
+    cpus: 2.0
+    mem_limit: 4g
+    pids_limit: 256
+    restart: unless-stopped
+
+volumes:
+  handbook_search_data:
+  handbook_document_data:
+  handbook_redis_data:

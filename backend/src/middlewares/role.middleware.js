@@ -6,7 +6,7 @@ export function authorizeRoles(...roles) {
       return next(new AppError(401, 'UNAUTHORIZED', 'No user or role found'));
     }
 
-    if (roles.includes(req.user.role)) {
+    if (roles.includes(String(req.user.role).toUpperCase())) {
       next();
     } else {
       next(new AppError(403, 'FORBIDDEN', 'Access denied'));

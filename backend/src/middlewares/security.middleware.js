@@ -3,8 +3,9 @@ import helmet from 'helmet';
 import cors from 'cors';
 import hpp from 'hpp';
 import cookieParser from 'cookie-parser';
+import { env } from '../config/env.js';
 
-const CSRF_COOKIE = 'XSRF-TOKEN';
+const CSRF_COOKIE = 'gh_csrf';
 const CSRF_HEADER = 'x-csrf-token';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -48,11 +49,11 @@ export function issueCsrfToken(req, res) {
   res.cookie(CSRF_COOKIE, token, {
     httpOnly: false, // must be readable by the SPA to echo in the header
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: env.COOKIE_SAME_SITE,
     path: '/',
   });
 
-  return res.status(200).json({ success: true, data: { csrfToken: token } });
+  return res.status(200).json({ success: true, data: { csrfToken: token }, meta: { requestId: req.requestId } });
 }
 
 function timingSafeEqual(a, b) {
@@ -66,14 +67,14 @@ export function csrfProtect(req, res, next) {
   if (SAFE_METHODS.has(req.method)) return next();
 
   const cookieToken = req.cookies?.[CSRF_COOKIE];
-  const headerToken =
-    req.headers[CSRF_HEADER] || req.body?.[CSRF_HEADER] || req.query?.[CSRF_HEADER];
+  const headerToken = req.headers[CSRF_HEADER];
 
   if (!cookieToken || !headerToken || !timingSafeEqual(cookieToken, headerToken)) {
     return res.status(403).json({
       success: false,
       code: 'FORBIDDEN',
       message: 'Invalid CSRF token',
+      error: { code: 'FORBIDDEN', message: 'Invalid CSRF token', requestId: req.requestId },
     });
   }
 

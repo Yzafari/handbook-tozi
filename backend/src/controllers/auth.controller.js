@@ -1,6 +1,7 @@
 import asyncHandler from '../utils/asyncHandler.util.js';
 import { ok, created } from '../utils/response.util.js';
 import { register, login, refresh, logout, changePassword } from '../services/auth.service.js';
+import { env } from '../config/env.js';
 
 const REFRESH_COOKIE = 'refreshToken';
 const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -13,7 +14,7 @@ function refreshCookieOptions() {
     httpOnly: true,
     // در محیط توسعه روی http نباید secure برابر با true باشد
     secure: isProduction, 
-    sameSite: isProduction ? 'strict' : 'lax',
+    sameSite: env.COOKIE_SAME_SITE,
     path: '/',
     maxAge: REFRESH_COOKIE_MAX_AGE_MS,
   };
@@ -34,9 +35,6 @@ export const registerHandler = asyncHandler(async (req, res) => {
 export const loginHandler = asyncHandler(async (req, res) => {
   const authResult = await login(req.body);
   
-  // 👇 این خط را برای دیباگ اضافه کنید تا در ترمینال بک‌اند ببینید چه چیزی برمی‌گردد
-  console.log('AUTH RESULT FROM SERVICE:', authResult);
-
   const { accessToken, refreshToken, user } = authResult;
 
   if (!refreshToken) {

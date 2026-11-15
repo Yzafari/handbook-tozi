@@ -1,25 +1,21 @@
-# dependencies
-node_modules/
-
-# env
-.env
-.env.*
-!.env.example
-
-# build / runtime
-dist/
-build/
-coverage/
-logs/
-*.log
-
-# uploads (keep folder marker only)
-backend/uploads/*
-!backend/uploads/.gitkeep
-
-# OS / editor
+**/node_modules/
+**/.env
+**/.env.*
+!**/.env.example
+**/dist/
+**/build/
+**/coverage/
+**/uploads/
+.expo/
 .DS_Store
-Thumbs.db
-.idea/
-.vscode/
-.aider*
+*.log
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+backend/backups/
+datacenter/backups/
+datacenter/data/
+mobile/.cache/
+mobile/documents/
+*.pem
+*.key

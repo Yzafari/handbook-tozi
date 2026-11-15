@@ -1,21 +1,18 @@
 import prisma from '../config/database.js';
 import { AppError } from '../utils/response.util.js';
 import logger from '../utils/logger.util.js';
-import { requestPayment, verifyPayment } from './zarinpal.service.js';
+import { requestPayment, verifyPayment, getPaymentUrl } from './zarinpal.service.js';
 import { activateSubscription } from './subscription.service.js';
 import { logEvent } from './audit.service.js';
 import { createNotification } from './notification.service.js';
+import { env } from '../config/env.js';
 
 const DEFAULT_DURATION_DAYS = 30;
 const TOMAN_TO_RIAL = 10;
 const PENDING_PAYMENT_TTL_MINUTES = Number(process.env.PAYMENT_PENDING_TTL_MINUTES) || 30;
 
 function getCallbackUrl() {
-  const base =
-    process.env.PAYMENT_CALLBACK_BASE_URL ||
-    process.env.APP_BASE_URL ||
-    `http://localhost:${process.env.PORT || 3000}`;
-  return `${base.replace(/\/+$/, '')}/api/payments/verify`;
+  return env.ZARINPAL_CALLBACK_URL;
 }
 
 function maskCardPan(cardPan) {
@@ -47,15 +44,31 @@ export function toPublicPayment(payment) {
 /**
  * Create a PENDING payment and open a Zarinpal session for it.
  *
- * @param {number} userId
- * @param {{ planId: number, durationDays?: number }} payload
+ * @param {string} userId
+ * @param {{ planId: string, durationDays?: number }} payload
  * @param {import('express').Request} [req]
  * @returns {Promise<{ payment: object, paymentUrl: string, authority: string }>}
  */
 export async function createPaymentRequest(userId, payload = {}, req) {
-  const planId = Number(payload.planId);
-  if (!Number.isInteger(planId) || planId <= 0) {
+  const planId = String(payload.planId ?? '').trim();
+  const idempotencyKey = String(payload.idempotencyKey ?? req?.headers?.['idempotency-key'] ?? '').trim() || null;
+  if (!planId || planId.length > 128) {
     throw new AppError(400, 'VALIDATION_ERROR', 'شناسه پلن نامعتبر است');
+  }
+  if (idempotencyKey && (idempotencyKey.length < 8 || idempotencyKey.length > 128)) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'کلید تکرارنشدن درخواست پرداخت معتبر نیست');
+  }
+
+  if (idempotencyKey) {
+    const previous = await prisma.payment.findUnique({ where: { idempotencyKey }, include: { plan: true } });
+    if (previous) {
+      if (previous.userId !== userId) throw new AppError(409, 'IDEMPOTENCY_KEY_REUSED', 'این کلید قبلاً برای حساب دیگری استفاده شده است');
+      if (previous.status === 'PENDING' && previous.authority && Number.isSafeInteger(previous.amountToman) && previous.amountToman > 0) {
+        return { payment: toPublicPayment(previous), paymentUrl: getPaymentUrl(previous.authority), authority: previous.authority, reused: true };
+      }
+      if (previous.status === 'PENDING') throw new AppError(409, 'PAYMENT_REQUEST_IN_PROGRESS', 'درخواست پرداخت با همین شناسه در حال پردازش است؛ چند لحظه دیگر دوباره تلاش کنید');
+      throw new AppError(409, 'IDEMPOTENCY_KEY_ALREADY_USED', 'این کلید قبلاً برای یک درخواست پرداخت نهایی استفاده شده است؛ برای تلاش تازه، درخواست جدید ایجاد کنید');
+    }
   }
 
   const plan = await prisma.plan.findUnique({ where: { id: planId } });
@@ -72,22 +85,37 @@ export async function createPaymentRequest(userId, payload = {}, req) {
   const durationDays =
     Number.isInteger(requestedDays) && requestedDays > 0
       ? requestedDays
-      : Number(plan.duration) > 0
-        ? Number(plan.duration)
+      : Number(plan.durationDays) > 0
+        ? Number(plan.durationDays)
         : DEFAULT_DURATION_DAYS;
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
 
-  const payment = await prisma.payment.create({
-    data: {
-      userId,
-      planId: plan.id,
-      amountToman,
-      durationDays,
-      status: 'PENDING',
-    },
-  });
+  let payment;
+  try {
+    payment = await prisma.payment.create({
+      data: {
+        userId,
+        planId: plan.id,
+        amount: amountToman,
+        amountToman,
+        durationDays,
+        idempotencyKey,
+        status: 'PENDING',
+      },
+    });
+  } catch (error) {
+    if (error?.code === 'P2002' && idempotencyKey) {
+      const previous = await prisma.payment.findUnique({ where: { idempotencyKey }, include: { plan: true } });
+      if (previous?.userId === userId && previous.status === 'PENDING' && previous.authority) {
+        return { payment: toPublicPayment(previous), paymentUrl: getPaymentUrl(previous.authority), authority: previous.authority, reused: true };
+      }
+      if (previous && previous.userId !== userId) throw new AppError(409, 'IDEMPOTENCY_KEY_REUSED', 'این کلید قبلاً برای حساب دیگری استفاده شده است');
+      throw new AppError(409, 'PAYMENT_REQUEST_IN_PROGRESS', 'درخواست پرداخت با همین شناسه در حال پردازش است؛ چند لحظه دیگر دوباره تلاش کنید');
+    }
+    throw error;
+  }
 
   let gateway;
   try {
@@ -157,11 +185,11 @@ async function failPayment(payment, reason, req) {
 
 async function finalizePayment(payment, verification, req) {
   const outcome = await prisma.$transaction(async (tx) => {
-    // Atomic compare-and-set: only the first caller can move PENDING -> COMPLETED.
+    // Atomic compare-and-set: only one verified callback can finalize an unverified payment row.
     const claimed = await tx.payment.updateMany({
-      where: { id: payment.id, status: 'PENDING' },
+      where: { id: payment.id, status: { in: ['PENDING', 'FAILED'] }, verifiedAt: null },
       data: {
-        status: 'COMPLETED',
+        status: 'SUCCESS',
         refId: verification.refId,
         cardPanMasked: maskCardPan(verification.cardPan),
         verifiedAt: new Date(),
@@ -195,7 +223,7 @@ async function finalizePayment(payment, verification, req) {
     try {
       await logEvent({
         userId: payment.userId,
-        action: 'PAYMENT_COMPLETED',
+        action: 'PAYMENT_SUCCESS',
         entity: 'Payment',
         entityId: payment.id,
         req,
@@ -240,7 +268,7 @@ export async function handleCallback(params = {}, req) {
   if (!payment) throw new AppError(404, 'NOT_FOUND', 'پرداخت یافت نشد');
 
   // Idempotency: a repeated callback for a finalized payment is a no-op.
-  if (payment.status === 'COMPLETED') {
+  if (payment.status === 'SUCCESS') {
     return {
       payment: toPublicPayment(payment),
       subscriptionId: payment.subscriptionId ?? null,
@@ -248,8 +276,14 @@ export async function handleCallback(params = {}, req) {
     };
   }
 
-  if (payment.status === 'FAILED') {
+  // A timeout or a lost callback may have marked the local row FAILED even
+  // though the gateway completed the charge. A late OK callback is still
+  // verified server-to-server and may safely finalize an unverified row.
+  if (payment.status === 'FAILED' && status && String(status).toUpperCase() !== 'OK') {
     throw new AppError(409, 'CONFLICT', 'این پرداخت قبلا ناموفق ثبت شده است');
+  }
+  if (!Number.isSafeInteger(payment.amountToman) || payment.amountToman <= 0) {
+    throw new AppError(409, 'LEGACY_AMOUNT_UNKNOWN', 'مبلغ تومانی این پرداخت قدیمی مشخص نیست و برای جلوگیری از تأیید مبلغ اشتباه، قابل تأیید خودکار نیست.');
   }
 
   if (status && String(status).toUpperCase() !== 'OK') {
@@ -292,9 +326,14 @@ export async function handleWebhook(payload = {}, req) {
   }
 }
 
+export async function getPaymentStatusByAuthority(authority) {
+  if (!authority || typeof authority !== 'string') return null;
+  return prisma.payment.findUnique({ where: { authority }, select: { id: true, status: true } });
+}
+
 export async function getPaymentForUser(userId, paymentId) {
-  const id = Number(paymentId);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = String(paymentId ?? '').trim();
+  if (!id || id.length > 128) {
     throw new AppError(400, 'VALIDATION_ERROR', 'شناسه پرداخت نامعتبر است');
   }
 
@@ -333,6 +372,7 @@ export default {
   handleCallback,
   handleWebhook,
   getPaymentForUser,
+  getPaymentStatusByAuthority,
   toPublicPayment,
   expirePendingPayments,
 };

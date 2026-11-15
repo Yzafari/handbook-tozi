@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "search",
+  "version": "1.0.0",
+  "basePath": "/search",
+  "dependencies": [
+    "documents"
+  ],
+  "requires": [
+    "auth",
+    "opensearch",
+    "redis"
+  ]
+}

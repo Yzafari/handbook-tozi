@@ -1,44 +1,30 @@
-const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcryptjs');
+import 'dotenv/config';
+import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  // ساخت کاربر ادمین
-  const adminPassword = await bcrypt.hash('admin123', 10);
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@gridhand.com' },
-    update: {},
-    create: {
-      email: 'admin@gridhand.com',
-      password: adminPassword,
-      name: 'مدیر سیستم',
-      role: 'ADMIN',
-    },
-  });
-  console.log('ادمین ساخته شد:', admin.email);
+  const email = process.env.SEED_SUPER_ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.SEED_SUPER_ADMIN_PASSWORD;
+  if (email && password) {
+    const passwordHash = await bcrypt.hash(password, 12);
+    await prisma.user.upsert({
+      where: { email },
+      update: {},
+      create: { email, password: passwordHash, name: 'مدیر ارشد سیستم', role: 'SUPER_ADMIN' },
+    });
+    console.info('Configured super administrator is ready.');
+  } else {
+    console.info('Super administrator seed skipped: set SEED_SUPER_ADMIN_EMAIL and SEED_SUPER_ADMIN_PASSWORD.');
+  }
 
-  // ساخت یک پلن پیش‌فرض
-  const plan = await prisma.plan.upsert({
+  await prisma.plan.upsert({
     where: { id: 'default-plan-1' },
     update: {},
-    create: {
-      id: 'default-plan-1',
-      name: 'پلن یک ماهه',
-      description: 'دسترسی به تمام امکانات برای یک ماه',
-      price: 100000,
-      durationDays: 30,
-      isActive: true,
-    },
+    create: { id: 'default-plan-1', name: 'پلن یک ماهه', description: 'دسترسی یک ماهه', price: 100000, durationDays: 30, isActive: true },
   });
-  console.log('پلن ساخته شد:', plan.name);
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+main().catch((error) => { console.error('Database seed failed:', error.message); process.exitCode = 1; })
+  .finally(async () => { await prisma.$disconnect(); });

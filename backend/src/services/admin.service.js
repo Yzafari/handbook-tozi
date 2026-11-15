@@ -1,537 +1,233 @@
-import { Prisma } from '@prisma/client';
 import prisma from '../config/database.js';
 import { AppError } from '../utils/response.util.js';
 import { encrypt } from '../utils/hash.util.js';
-import logger from '../utils/logger.util.js';
 import { logEvent } from './audit.service.js';
 import { toPublicPayment } from './payment.service.js';
 import { toPublicSubscription } from './subscription.service.js';
+import { deleteCachedJson } from './cache/redis-cache.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const REVENUE_GROUPS = new Set(['day', 'week', 'month']);
 const PAYMENT_SORT_FIELDS = new Set(['createdAt', 'amountToman', 'status']);
-
-function parseId(value, label) {
-  const id = Number(value);
-  if (!Number.isInteger(id) || id <= 0) {
+const USER_SORT_FIELDS = new Set(['createdAt', 'name', 'email']);
+const safePage = (v, fallback) => Math.max(1, Number.isInteger(Number(v)) ? Number(v) : fallback);
+const safeLimit = (v, fallback) => Math.min(100, safePage(v, fallback));
+const paginationMeta = (page, limit, total) => ({ page, limit, total, totalPages: Math.ceil(total / limit) });
+const ensureId = (value, label) => {
+  if (typeof value !== 'string' || !value.trim() || value.length > 128) {
     throw new AppError(400, 'VALIDATION_ERROR', `${label} نامعتبر است`);
   }
-  return id;
-}
-
-function paginationMeta(page, limit, total) {
-  return { page, limit, total, totalPages: Math.ceil(total / limit) };
-}
-
+  return value.trim();
+};
 async function safeLog(payload) {
-  try {
-    await logEvent(payload);
-  } catch (error) {
-    logger.error('Failed to write audit log:', error?.message);
-  }
+  try { await logEvent(payload); } catch { /* audit failure must not break the business operation */ }
 }
 
 export async function getStats() {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * DAY_MS);
-
-  const [
-    totalUsers,
-    activeUsers,
-    newUsersLast30Days,
-    totalPayments,
-    completedPayments,
-    pendingPayments,
-    failedPayments,
-    revenueAgg,
-    revenueLast30Agg,
-    activeSubscriptions,
-    totalPlans,
-    activePlans,
-  ] = await Promise.all([
+  const [totalUsers, activeUsers, newUsersLast30Days, totalPayments, successfulPayments,
+    pendingPayments, failedPayments, legacyAmountUnknownCount, revenueAgg, revenueLast30Agg, activeSubscriptions,
+    totalPlans, activePlans] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { isActive: true } }),
     prisma.user.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
     prisma.payment.count(),
-    prisma.payment.count({ where: { status: 'COMPLETED' } }),
+    prisma.payment.count({ where: { status: 'SUCCESS' } }),
     prisma.payment.count({ where: { status: 'PENDING' } }),
     prisma.payment.count({ where: { status: 'FAILED' } }),
-    prisma.payment.aggregate({
-      where: { status: 'COMPLETED' },
-      _sum: { amountToman: true },
-    }),
-    prisma.payment.aggregate({
-      where: { status: 'COMPLETED', createdAt: { gte: thirtyDaysAgo } },
-      _sum: { amountToman: true },
-    }),
+    prisma.payment.count({ where: { status: 'SUCCESS', amountToman: null } }),
+    prisma.payment.aggregate({ where: { status: 'SUCCESS' }, _sum: { amountToman: true } }),
+    prisma.payment.aggregate({ where: { status: 'SUCCESS', createdAt: { gte: thirtyDaysAgo } }, _sum: { amountToman: true } }),
     prisma.subscription.count({ where: { status: 'ACTIVE', endDate: { gt: now } } }),
     prisma.plan.count(),
     prisma.plan.count({ where: { isActive: true } }),
   ]);
-
   return {
-    users: {
-      total: totalUsers,
-      active: activeUsers,
-      newLast30Days: newUsersLast30Days,
-    },
-    payments: {
-      total: totalPayments,
-      completed: completedPayments,
-      pending: pendingPayments,
-      failed: failedPayments,
-    },
-    revenue: {
-      totalToman: revenueAgg._sum.amountToman ?? 0,
-      last30DaysToman: revenueLast30Agg._sum.amountToman ?? 0,
-    },
-    subscriptions: { active: activeSubscriptions },
-    plans: { total: totalPlans, active: activePlans },
+    totalUsers, activeUsers, newUsersLast30Days, activeSubscriptions,
+    totalRevenueToman: revenueAgg._sum.amountToman ?? 0,
+    last30DaysRevenueToman: revenueLast30Agg._sum.amountToman ?? 0,
+    successfulPayments, pendingPayments, failedPayments, legacyAmountUnknownCount,
+    revenueAmountsIncomplete: legacyAmountUnknownCount > 0,
+    users: { total: totalUsers, active: activeUsers, newLast30Days: newUsersLast30Days },
+    payments: { total: totalPayments, completed: successfulPayments, pending: pendingPayments, failed: failedPayments, legacyAmountUnknown: legacyAmountUnknownCount },
+    revenue: { totalToman: revenueAgg._sum.amountToman ?? 0, last30DaysToman: revenueLast30Agg._sum.amountToman ?? 0 },
+    subscriptions: { active: activeSubscriptions }, plans: { total: totalPlans, active: activePlans },
   };
 }
 
-export async function getRevenue({ from, to, groupBy = 'day', planId } = {}) {
-  if (!REVENUE_GROUPS.has(groupBy)) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'groupBy must be one of day, week, month');
-  }
-
-  const now = new Date();
-  const start = from ? new Date(from) : new Date(now.getTime() - 30 * DAY_MS);
-  const end = to ? new Date(to) : now;
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'بازه زمانی نامعتبر است');
-  }
-  if (start > end) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'from must be before or equal to to');
-  }
-
-  const normalizedPlanId = planId !== undefined && planId !== null ? Number(planId) : undefined;
-  const planFilter =
-    normalizedPlanId !== undefined
-      ? Prisma.sql`AND "planId" = ${normalizedPlanId}`
-      : Prisma.empty;
-
-  const [totals, series] = await Promise.all([
-    prisma.payment.aggregate({
-      where: {
-        status: 'COMPLETED',
-        createdAt: { gte: start, lte: end },
-        ...(normalizedPlanId !== undefined ? { planId: normalizedPlanId } : {}),
-      },
-      _sum: { amountToman: true },
-      _count: { _all: true },
-    }),
-    prisma.$queryRaw`
-      SELECT date_trunc(${groupBy}::text, "createdAt") AS bucket,
-             SUM("amountToman")::int AS revenue,
-             COUNT(*)::int AS count
-      FROM "Payment"
-      WHERE "status" = 'COMPLETED'
-        AND "createdAt" >= ${start}
-        AND "createdAt" <= ${end}
-        ${planFilter}
-      GROUP BY bucket
-      ORDER BY bucket ASC
-    `,
-  ]);
-
-  return {
-    range: { from: start, to: end, groupBy },
-    totals: {
-      revenueToman: totals._sum.amountToman ?? 0,
-      payments: totals._count._all,
-    },
-    series: series.map((row) => ({
-      bucket: row.bucket,
-      revenueToman: Number(row.revenue),
-      payments: Number(row.count),
-    })),
-  };
+export async function getRevenueSeries(filters = {}) {
+  const days = Math.min(365, Math.max(1, Number.parseInt(filters.days, 10) || 30));
+  const groupBy = ['day', 'week', 'month'].includes(filters.groupBy) ? filters.groupBy : 'day';
+  const to = filters.to ? new Date(filters.to) : new Date();
+  const from = filters.from ? new Date(filters.from) : new Date(to.getTime() - days * DAY_MS);
+  const planId = typeof filters.planId === 'string' && filters.planId ? filters.planId : null;
+  const rows = await prisma.$queryRaw`
+    SELECT date_trunc(${groupBy}, "createdAt") AS bucket,
+           COALESCE(SUM("amountToman"), 0)::bigint AS revenue,
+           COUNT("amountToman")::int AS count,
+           COUNT(*) FILTER (WHERE "amountToman" IS NULL)::int AS unknown_amount_count
+    FROM "Payment"
+    WHERE "status" = 'SUCCESS' AND "createdAt" >= ${from} AND "createdAt" <= ${to}
+      AND (${planId}::text IS NULL OR "planId" = ${planId})
+    GROUP BY bucket ORDER BY bucket ASC`;
+  return { range: { from, to, days, groupBy, planId }, items: rows.map(r => ({ date: r.bucket, revenueToman: Number(r.revenue), count: Number(r.count), unknownAmountCount: Number(r.unknown_amount_count) })) };
 }
 
-export async function listUsers({ page = 1, limit = 10, sortOrder = 'desc' } = {}) {
-  const skip = (page - 1) * limit;
-
-  const [users, total] = await Promise.all([
-    prisma.user.findMany({
-      orderBy: { createdAt: sortOrder },
-      skip,
-      take: limit,
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        isActive: true,
-        lastLoginAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    }),
-    prisma.user.count(),
+export async function listUsers(filters = {}) {
+  const page = safePage(filters.page, 1); const limit = safeLimit(filters.limit, 10);
+  const requestedSort = filters.sortBy === 'fullName' ? 'name' : filters.sortBy;
+  const sortBy = USER_SORT_FIELDS.has(requestedSort) ? requestedSort : 'createdAt';
+  const sortOrder = filters.sortOrder === 'asc' ? 'asc' : 'desc';
+  const where = {};
+  if (filters.role) where.role = filters.role;
+  if (filters.isActive !== undefined) where.isActive = filters.isActive;
+  if (filters.search) where.OR = [
+    { email: { contains: filters.search, mode: 'insensitive' } },
+    { name: { contains: filters.search, mode: 'insensitive' } },
+  ];
+  const [items, total] = await Promise.all([
+    prisma.user.findMany({ where, orderBy: { [sortBy]: sortOrder }, skip: (page - 1) * limit, take: limit,
+      select: { id: true, email: true, name: true, role: true, jobRole: true, province: true, isActive: true, lastLoginAt: true, createdAt: true, updatedAt: true } }),
+    prisma.user.count({ where }),
   ]);
-
-  return { data: users, meta: paginationMeta(page, limit, total) };
+  return { items: items.map(u => ({ ...u, fullName: u.name })), meta: paginationMeta(page, limit, total) };
 }
 
-export async function getUserDetails(userId) {
-  const id = parseId(userId, 'شناسه کاربر');
-
-  const user = await prisma.user.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      role: true,
-      isActive: true,
-      avatarUrl: true,
-      lastLoginAt: true,
-      failedLoginCount: true,
-      lockedUntil: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
-
+export async function getUserDetail(userId) {
+  const id = ensureId(userId, 'شناسه کاربر');
+  const user = await prisma.user.findUnique({ where: { id }, select: {
+    id: true, email: true, name: true, role: true, jobRole: true, province: true, isActive: true, avatarUrl: true,
+    lastLoginAt: true, failedLoginCount: true, lockedUntil: true, createdAt: true, updatedAt: true,
+  } });
   if (!user) throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
-
-  const [subscription, payments, auditLogs] = await Promise.all([
-    prisma.subscription.findFirst({
-      where: { userId: id },
-      orderBy: { endDate: 'desc' },
-      include: { plan: true },
-    }),
-    prisma.payment.findMany({
-      where: { userId: id },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-      include: { plan: true },
-    }),
-    prisma.auditLog.findMany({
-      where: { userId: id },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-    }),
+  const [subscription, payments, logs] = await Promise.all([
+    prisma.subscription.findFirst({ where: { userId: id }, orderBy: { endDate: 'desc' }, include: { plan: true } }),
+    prisma.payment.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 20, include: { plan: true } }),
+    prisma.adminLog.findMany({ where: { adminId: id }, orderBy: { createdAt: 'desc' }, take: 20 }),
   ]);
-
-  return {
-    user,
-    subscription: subscription ? toPublicSubscription(subscription) : null,
-    recentPayments: payments.map(toPublicPayment),
-    recentAuditLogs: auditLogs,
-  };
+  return { user: { ...user, fullName: user.name }, subscription: subscription ? toPublicSubscription(subscription) : null,
+    recentPayments: payments.map(toPublicPayment), recentAuditLogs: logs };
 }
 
-export async function updateUser(userId, data = {}) {
-  const id = parseId(userId, 'شناسه کاربر');
-
+export async function updateUser({ id: userId, actor, body = {}, req } = {}) {
+  const id = ensureId(userId, 'شناسه کاربر');
+  if (actor?.id === id) throw new AppError(400, 'SELF_MODIFICATION_BLOCKED', 'مدیر نمی‌تواند حساب خودش را از این مسیر تغییر دهد');
   const existing = await prisma.user.findUnique({ where: { id } });
   if (!existing) throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
-
-  const updateData = {};
-
-  if (data.fullName !== undefined) {
-    updateData.fullName = data.fullName;
-  }
-
-  if (data.email !== undefined && data.email !== existing.email) {
-    const conflict = await prisma.user.findUnique({ where: { email: data.email } });
+  if (existing.role === 'SUPER_ADMIN' && actor?.role !== 'SUPER_ADMIN') throw new AppError(403, 'FORBIDDEN', 'تغییر مدیر ارشد مجاز نیست');
+  const data = {};
+  if (body.fullName !== undefined) data.name = body.fullName;
+  if (body.email !== undefined && body.email !== existing.email) {
+    const conflict = await prisma.user.findUnique({ where: { email: body.email } });
     if (conflict) throw new AppError(409, 'CONFLICT', 'این ایمیل قبلا ثبت شده است');
-    updateData.email = data.email;
+    data.email = body.email;
   }
-
-  if (data.phone !== undefined) {
-    updateData.phoneEncrypted = data.phone ? encrypt(data.phone) : null;
+  if (body.phone !== undefined) data.phoneEncrypted = body.phone ? encrypt(body.phone) : null;
+  if (body.jobRole !== undefined) data.jobRole = body.jobRole;
+  if (body.province !== undefined) data.province = body.province;
+  if (body.role !== undefined) {
+    if (actor?.role !== 'SUPER_ADMIN' && body.role !== existing.role) throw new AppError(403, 'FORBIDDEN', 'تغییر نقش فقط برای مدیر ارشد مجاز است');
+    data.role = body.role;
   }
-
-  if (data.role !== undefined) {
-    updateData.role = data.role;
-  }
-
-  if (data.isActive !== undefined) {
-    updateData.isActive = data.isActive;
-  }
-
-  if (Object.keys(updateData).length === 0) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'هیچ فیلدی برای به‌روزرسانی ارسال نشده است');
-  }
-
-  const updated = await prisma.$transaction(async (tx) => {
-    const user = await tx.user.update({
-      where: { id },
-      data: updateData,
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        isActive: true,
-        avatarUrl: true,
-        lastLoginAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    // Deactivating a user must invalidate their active sessions.
-    if (data.isActive === false) {
-      await tx.refreshToken.updateMany({
-        where: { userId: id, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
+  if (body.isActive !== undefined) data.isActive = body.isActive;
+  if (!Object.keys(data).length) throw new AppError(400, 'VALIDATION_ERROR', 'هیچ فیلدی برای به‌روزرسانی ارسال نشده است');
+  const securityChanged = (body.role !== undefined && body.role !== existing.role)
+    || (body.isActive !== undefined && body.isActive !== existing.isActive)
+    || (body.jobRole !== undefined && body.jobRole !== existing.jobRole);
+  if (securityChanged) data.tokenVersion = { increment: 1 };
+  const updated = await prisma.$transaction(async tx => {
+    const result = await tx.user.update({ where: { id }, data, select: { id: true, email: true, name: true, role: true, jobRole: true, province: true, isActive: true, avatarUrl: true, lastLoginAt: true, createdAt: true, updatedAt: true } });
+    if (body.isActive === false || (body.role && body.role !== existing.role)) {
+      await tx.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
     }
-
-    return user;
+    return result;
   });
-
-  await safeLog({
-    userId: id,
-    action: 'ADMIN_USER_UPDATED',
-    entity: 'User',
-    entityId: id,
-    details: { fields: Object.keys(updateData) },
-  });
-
-  return updated;
+  await deleteCachedJson(`auth:user:${id}`);
+  await safeLog({ userId: actor?.id, action: 'ADMIN_USER_UPDATED', entity: 'User', entityId: id, req, metadata: { fields: Object.keys(data) } });
+  return { ...updated, fullName: updated.name };
 }
 
 export async function listPayments(filters = {}) {
-  const {
-    page = 1,
-    limit = 10,
-    sortOrder = 'desc',
-    sortBy = 'createdAt',
-    status,
-    userId,
-    planId,
-    from,
-    to,
-    minAmountToman,
-    maxAmountToman,
-  } = filters;
-
-  const skip = (page - 1) * limit;
-  const sortField = PAYMENT_SORT_FIELDS.has(sortBy) ? sortBy : 'createdAt';
-
+  const page = safePage(filters.page, 1); const limit = safeLimit(filters.limit, 10);
+  const sortBy = PAYMENT_SORT_FIELDS.has(filters.sortBy) ? filters.sortBy : 'createdAt';
+  const sortOrder = filters.sortOrder === 'asc' ? 'asc' : 'desc';
   const where = {};
-  if (status) where.status = status;
-  if (userId !== undefined) where.userId = Number(userId);
-  if (planId !== undefined) where.planId = Number(planId);
-
-  if (from || to) {
-    where.createdAt = {};
-    if (from) where.createdAt.gte = new Date(from);
-    if (to) where.createdAt.lte = new Date(to);
-  }
-
-  if (minAmountToman !== undefined || maxAmountToman !== undefined) {
-    where.amountToman = {};
-    if (minAmountToman !== undefined) where.amountToman.gte = Number(minAmountToman);
-    if (maxAmountToman !== undefined) where.amountToman.lte = Number(maxAmountToman);
-  }
-
+  if (filters.status) where.status = filters.status;
+  if (filters.search) where.OR = [
+    { user: { email: { contains: filters.search, mode: 'insensitive' } } },
+    { plan: { name: { contains: filters.search, mode: 'insensitive' } } },
+  ];
+  if (filters.userId) where.userId = String(filters.userId);
+  if (filters.planId) where.planId = String(filters.planId);
+  if (filters.from || filters.to) where.createdAt = { ...(filters.from ? { gte: new Date(filters.from) } : {}), ...(filters.to ? { lte: new Date(filters.to) } : {}) };
+  if (filters.minAmountToman !== undefined || filters.maxAmountToman !== undefined) where.amountToman = { ...(filters.minAmountToman !== undefined ? { gte: Number(filters.minAmountToman) } : {}), ...(filters.maxAmountToman !== undefined ? { lte: Number(filters.maxAmountToman) } : {}) };
   const [payments, total] = await Promise.all([
-    prisma.payment.findMany({
-      where,
-      orderBy: { [sortField]: sortOrder },
-      skip,
-      take: limit,
-      include: {
-        plan: true,
-        user: { select: { id: true, email: true, fullName: true } },
-      },
-    }),
+    prisma.payment.findMany({ where, orderBy: { [sortBy]: sortOrder }, skip: (page - 1) * limit, take: limit,
+      include: { plan: true, user: { select: { id: true, email: true, name: true } } } }),
     prisma.payment.count({ where }),
   ]);
-
-  return {
-    data: payments.map((payment) => ({
-      ...toPublicPayment(payment),
-      user: payment.user,
-    })),
-    meta: paginationMeta(page, limit, total),
-  };
+  return { items: payments.map(p => ({ ...toPublicPayment(p), user: { ...p.user, fullName: p.user.name } })), meta: paginationMeta(page, limit, total) };
 }
 
-export async function getPaymentDetails(paymentId) {
-  const id = parseId(paymentId, 'شناسه پرداخت');
-
-  const payment = await prisma.payment.findUnique({
-    where: { id },
-    include: {
-      plan: true,
-      user: { select: { id: true, email: true, fullName: true } },
-      subscription: true,
-    },
-  });
-
+export async function getPaymentDetail(paymentId) {
+  const id = ensureId(paymentId, 'شناسه پرداخت');
+  const payment = await prisma.payment.findUnique({ where: { id }, include: { plan: true, user: { select: { id: true, email: true, name: true } }, subscription: true } });
   if (!payment) throw new AppError(404, 'NOT_FOUND', 'پرداخت یافت نشد');
-
-  return {
-    ...toPublicPayment(payment),
-    authority: payment.authority,
-    user: payment.user,
-    subscription: payment.subscription,
-  };
+  return { ...toPublicPayment(payment), authority: payment.authority, user: { ...payment.user, fullName: payment.user.name }, subscription: payment.subscription };
 }
 
-export async function listAuditLogs({ page = 1, limit = 10, sortOrder = 'desc' } = {}) {
-  const skip = (page - 1) * limit;
-
-  const [logs, total] = await Promise.all([
-    prisma.auditLog.findMany({
-      orderBy: { createdAt: sortOrder },
-      skip,
-      take: limit,
-      include: {
-        user: { select: { id: true, email: true, fullName: true } },
-      },
-    }),
-    prisma.auditLog.count(),
+export async function listAuditLogs(filters = {}) {
+  const page = safePage(filters.page, 1); const limit = safeLimit(filters.limit, 10);
+  const adminId = filters.adminId ?? filters.userId;
+  const where = { ...(adminId ? { adminId: String(adminId) } : {}), ...(filters.action ? { action: filters.action } : {}) };
+  const [items, total] = await Promise.all([
+    prisma.adminLog.findMany({ where, orderBy: { createdAt: filters.sortOrder === 'asc' ? 'asc' : 'desc' }, skip: (page - 1) * limit, take: limit, include: { admin: { select: { id: true, email: true, name: true } } } }),
+    prisma.adminLog.count({ where }),
   ]);
-
-  return { data: logs, meta: paginationMeta(page, limit, total) };
+  const normalizedItems = items.map(log => {
+    let details = {};
+    try { details = log.details ? JSON.parse(log.details) : {}; } catch { details = { rawDetails: log.details }; }
+    return { ...log, userId: log.adminId, userEmail: log.admin?.email ?? null, entity: details.entity ?? null, entityId: details.entityId ?? null, ip: details.ip ?? null, userAgent: details.userAgent ?? null, metadata: details.metadata ?? null };
+  });
+  return { items: normalizedItems, meta: paginationMeta(page, limit, total) };
 }
 
-export async function listPlans() {
-  return prisma.plan.findMany({ orderBy: { createdAt: 'desc' } });
-}
+export async function listAllPlans() { return prisma.plan.findMany({ orderBy: { createdAt: 'desc' } }); }
+export const listPlans = listAllPlans;
 
-export async function createPlan(data = {}) {
-  const name = String(data.name ?? '').trim();
-  if (name.length < 2 || name.length > 120) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'نام پلن باید بین ۲ تا ۱۲۰ کاراکتر باشد');
-  }
-
-  const price = Number(data.price);
-  if (!Number.isFinite(price) || price < 0) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'قیمت پلن نامعتبر است');
-  }
-
-  const duration = Number(data.duration);
-  if (!Number.isInteger(duration) || duration <= 0) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'مدت پلن نامعتبر است');
-  }
-
-  const description =
-    data.description === undefined || data.description === null
-      ? null
-      : String(data.description).trim();
-
-  const plan = await prisma.plan.create({
-    data: {
-      name,
-      description,
-      price,
-      duration,
-      isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
-    },
-  });
-
-  await safeLog({
-    action: 'ADMIN_PLAN_CREATED',
-    entity: 'Plan',
-    entityId: plan.id,
-    details: { name: plan.name, price: plan.price, duration: plan.duration },
-  });
-
+export async function createPlan({ body = {}, actor, req } = {}) {
+  const name = String(body.name ?? '').trim();
+  const price = Number(body.price); const durationDays = Number(body.durationDays ?? body.duration);
+  if (name.length < 2 || name.length > 120 || !Number.isSafeInteger(price) || price < 0 || !Number.isInteger(durationDays) || durationDays < 1) throw new AppError(400, 'VALIDATION_ERROR', 'اطلاعات پلن معتبر نیست');
+  const plan = await prisma.plan.create({ data: { name, description: body.description?.trim() || null, price, durationDays, isActive: body.isActive ?? true } });
+  await safeLog({ userId: actor?.id, action: 'ADMIN_PLAN_CREATED', entity: 'Plan', entityId: plan.id, req });
   return plan;
 }
 
-export async function updatePlan(planId, data = {}) {
-  const id = parseId(planId, 'شناسه پلن');
-
+export async function updatePlan({ id: planId, body = {}, actor, req } = {}) {
+  const id = ensureId(planId, 'شناسه پلن');
   const existing = await prisma.plan.findUnique({ where: { id } });
   if (!existing) throw new AppError(404, 'NOT_FOUND', 'پلن یافت نشد');
-
-  const updateData = {};
-
-  if (data.name !== undefined) {
-    const name = String(data.name).trim();
-    if (name.length < 2 || name.length > 120) {
-      throw new AppError(400, 'VALIDATION_ERROR', 'نام پلن باید بین ۲ تا ۱۲۰ کاراکتر باشد');
-    }
-    updateData.name = name;
-  }
-
-  if (data.description !== undefined) {
-    updateData.description =
-      data.description === null ? null : String(data.description).trim();
-  }
-
-  if (data.price !== undefined) {
-    const price = Number(data.price);
-    if (!Number.isFinite(price) || price < 0) {
-      throw new AppError(400, 'VALIDATION_ERROR', 'قیمت پلن نامعتبر است');
-    }
-    updateData.price = price;
-  }
-
-  if (data.duration !== undefined) {
-    const duration = Number(data.duration);
-    if (!Number.isInteger(duration) || duration <= 0) {
-      throw new AppError(400, 'VALIDATION_ERROR', 'مدت پلن نامعتبر است');
-    }
-    updateData.duration = duration;
-  }
-
-  if (data.isActive !== undefined) {
-    updateData.isActive = Boolean(data.isActive);
-  }
-
-  if (Object.keys(updateData).length === 0) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'هیچ فیلدی برای به‌روزرسانی ارسال نشده است');
-  }
-
-  const updated = await prisma.plan.update({ where: { id }, data: updateData });
-
-  await safeLog({
-    action: 'ADMIN_PLAN_UPDATED',
-    entity: 'Plan',
-    entityId: id,
-    details: { fields: Object.keys(updateData) },
-  });
-
-  return updated;
+  const data = {};
+  if (body.name !== undefined) data.name = String(body.name).trim();
+  if (body.description !== undefined) data.description = body.description?.trim() || null;
+  if (body.price !== undefined) data.price = Number(body.price);
+  if (body.durationDays !== undefined || body.duration !== undefined) data.durationDays = Number(body.durationDays ?? body.duration);
+  if (body.isActive !== undefined) data.isActive = Boolean(body.isActive);
+  if (!Object.keys(data).length) throw new AppError(400, 'VALIDATION_ERROR', 'هیچ فیلدی برای به‌روزرسانی ارسال نشده است');
+  if (data.name !== undefined && (data.name.length < 2 || data.name.length > 120)) throw new AppError(400, 'VALIDATION_ERROR', 'نام پلن نامعتبر است');
+  if (data.price !== undefined && (!Number.isSafeInteger(data.price) || data.price < 0)) throw new AppError(400, 'VALIDATION_ERROR', 'قیمت پلن نامعتبر است');
+  if (data.durationDays !== undefined && (!Number.isInteger(data.durationDays) || data.durationDays < 1)) throw new AppError(400, 'VALIDATION_ERROR', 'مدت پلن نامعتبر است');
+  const plan = await prisma.plan.update({ where: { id }, data });
+  await safeLog({ userId: actor?.id, action: 'ADMIN_PLAN_UPDATED', entity: 'Plan', entityId: id, req, metadata: { fields: Object.keys(data) } });
+  return plan;
 }
 
-export async function deletePlan(planId) {
-  const id = parseId(planId, 'شناسه پلن');
-
+export async function deletePlan({ id: planId, actor, req } = {}) {
+  const id = ensureId(planId, 'شناسه پلن');
   const existing = await prisma.plan.findUnique({ where: { id } });
   if (!existing) throw new AppError(404, 'NOT_FOUND', 'پلن یافت نشد');
-
-  // Soft delete: plans are referenced by historical payments and subscriptions,
-  // so a hard delete would break those records. Deactivating hides the plan
-  // from the public listing while preserving history.
-  const updated = await prisma.plan.update({
-    where: { id },
-    data: { isActive: false },
-  });
-
-  await safeLog({
-    action: 'ADMIN_PLAN_DELETED',
-    entity: 'Plan',
-    entityId: id,
-    details: { softDeleted: true },
-  });
-
-  return updated;
+  const plan = await prisma.plan.update({ where: { id }, data: { isActive: false } });
+  await safeLog({ userId: actor?.id, action: 'ADMIN_PLAN_DEACTIVATED', entity: 'Plan', entityId: id, req });
+  return plan;
 }
-
-export default {
-  getStats,
-  getRevenue,
-  listUsers,
-  getUserDetails,
-  updateUser,
-  listPayments,
-  getPaymentDetails,
-  listAuditLogs,
-  listPlans,
-  createPlan,
-  updatePlan,
-  deletePlan,
-};

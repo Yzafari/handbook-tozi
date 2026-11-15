@@ -47,6 +47,12 @@ function extractError(response) {
  * @param {string} [params.mobile]      Optional payer mobile number.
  * @returns {Promise<{ authority: string, paymentUrl: string, fee: number }>}
  */
+export function getPaymentUrl(authority) {
+  if (!authority || typeof authority !== 'string') throw new AppError(400, 'VALIDATION_ERROR', 'authority is required');
+  const { startPayBase } = getConfig();
+  return `${startPayBase}/${encodeURIComponent(authority)}`;
+}
+
 export async function requestPayment({ amount, callbackUrl, description, email, mobile }) {
   if (!amount || Number(amount) <= 0) {
     throw new AppError(400, 'VALIDATION_ERROR', 'amount must be a positive number');
@@ -145,4 +151,4 @@ export async function verifyPayment({ amount, authority }) {
   };
 }
 
-export default { requestPayment, verifyPayment };
+export default { requestPayment, verifyPayment, getPaymentUrl };

@@ -1,6 +1,7 @@
 export const ROLES = {
-  ADMIN: 'admin',
-  USER: 'user',
+  ADMIN: 'ADMIN',
+  SUPER_ADMIN: 'SUPER_ADMIN',
+  USER: 'USER',
 };
 
 export const COOKIE = {
@@ -11,14 +12,12 @@ export const COOKIE = {
 export const CSRF_HEADER = 'X-CSRF-Token';
 
 export const AUTH = {
-  JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || 'dev_access_secret',
-  JWT_REFRESH_SECRET: process.env.ENCRYPTION_KEY || 'dev_refresh_secret',
+  MAX_FAILED: Number.parseInt(process.env.AUTH_MAX_FAILED, 10) || 5,
+  LOCK_MINUTES: Number.parseInt(process.env.AUTH_LOCK_MINUTES, 10) || 15,
 };
 
 export const PAYMENT = {
-  STRIPE_SECRET_KEY: 'your_stripe_secret_key',
-  STRIPE_PUBLISHABLE_KEY: 'your_stripe_publishable_key',
-  REMINDER_DAYS_BEFORE: 3,
+  REMINDER_DAYS_BEFORE: Number.parseInt(process.env.PAYMENT_REMINDER_DAYS_BEFORE, 10) || 3,
 };
 
 export const AUDIT_ACTIONS = {

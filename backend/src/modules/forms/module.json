@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "forms",
+  "version": "1.0.0",
+  "basePath": "/forms",
+  "dependencies": [],
+  "requires": [
+    "auth",
+    "postgresql"
+  ],
+  "syncEntities": [
+    "FormDraft"
+  ]
+}

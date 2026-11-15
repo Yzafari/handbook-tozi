@@ -1,0 +1,15 @@
+export const JOB_ROLE_LABELS: Record<string, string> = {
+  SIMBAN: 'سیم‌بان',
+  TECHNICAL_OPERATION_SPECIALIST: 'کارشناس فنی و بهره‌برداری',
+  NETWORK_TECHNICIAN: 'تکنسین شبکه برق',
+  ENGINEERING_DESIGN_SPECIALIST: 'کارشناس مهندسی و طراحی',
+  METER_READER: 'مأمور قرائت',
+  ELECTRICITY_MANAGER: 'مدیر برق',
+  CONNECTION_SALES_OPERATOR: 'اپراتور فروش انشعاب',
+  ENERGY_SALES_OPERATOR: 'اپراتور فروش انرژی',
+  CONTRACTOR: 'پیمانکار',
+  CONSULTANT_SUPERVISOR: 'ناظر مشاور',
+  NETWORK_DESIGNER: 'طراح شبکه',
+  LEGAL_SPECIALIST: 'کارشناس حقوقی',
+  FINANCE_ADMIN_SPECIALIST: 'کارشناس مالی و اداری',
+};

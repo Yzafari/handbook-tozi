@@ -1,14 +1,16 @@
 import express from 'express';
 import multer from 'multer';
 import fs from 'fs';
-import path from 'path';
 import { authenticate } from '../middlewares/auth.middleware.js';
 import { AppError } from '../utils/response.util.js';
 import * as userController from '../controllers/user.controller.js';
+import { validate } from '../middlewares/validation.middleware.js';
+import { updateProfileSchema, paginationQuerySchema } from '../validators/user.validator.js';
+import { UPLOADS_DIR } from '../config/paths.js';
 
 const router = express.Router();
 
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
+const UPLOAD_DIR = UPLOADS_DIR;
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const ALLOWED_MIME = new Map([
@@ -55,11 +57,11 @@ function uploadAvatar(req, res, next) {
 router.use(authenticate);
 
 router.get('/me', userController.getMe);
-router.patch('/me', userController.updateMe);
+router.patch('/me', validate({ body: updateProfileSchema }), userController.updateMe);
 router.post('/me/avatar', uploadAvatar, userController.uploadAvatar);
 router.get('/me/dashboard', userController.getDashboard);
-router.get('/me/payments', userController.getPayments);
-router.get('/me/notifications', userController.getNotifications);
+router.get('/me/payments', validate({ query: paginationQuerySchema }), userController.getPayments);
+router.get('/me/notifications', validate({ query: paginationQuerySchema }), userController.getNotifications);
 router.patch('/me/notifications/:id/read', userController.readNotification);
 
 export default router;

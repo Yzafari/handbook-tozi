@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "ocr",
+  "version": "1.0.0",
+  "basePath": "/ocr",
+  "dependencies": [],
+  "requires": [
+    "auth",
+    "datacenter-storage",
+    "tesseract",
+    "ocrmypdf"
+  ]
+}

@@ -9,17 +9,27 @@ export class AppError extends Error {
   }
 }
 
-function envelope(data, message, meta) {
+function responseMeta(res, meta) {
+  const requestId = res.getHeader?.('X-Request-ID');
+  if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+    return requestId ? { ...meta, requestId } : meta;
+  }
+  if (requestId) return { ...(meta !== undefined ? { value: meta } : {}), requestId };
+  return meta;
+}
+
+function envelope(res, data, message, meta) {
   const body = { success: true, data: data === undefined ? null : data };
   if (message !== undefined) body.message = message;
-  if (meta !== undefined) body.meta = meta;
+  const finalMeta = responseMeta(res, meta);
+  if (finalMeta !== undefined) body.meta = finalMeta;
   return body;
 }
 
 export function ok(res, data, message, meta) {
-  return res.status(200).json(envelope(data, message, meta));
+  return res.status(200).json(envelope(res, data, message, meta));
 }
 
 export function created(res, data, message) {
-  return res.status(201).json(envelope(data, message));
+  return res.status(201).json(envelope(res, data, message));
 }

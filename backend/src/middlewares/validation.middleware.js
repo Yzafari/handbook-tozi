@@ -17,20 +17,26 @@ function assign(target, key, value) {
 }
 
 export function validate(schemas) {
+  // Backward-compatible shorthand: validate(zodSchema) validates req.body.
+  // Explicit form validate({ body, query, params }) supports multi-part validation.
+  const normalizedSchemas = schemas && typeof schemas.parse === 'function'
+    ? { body: schemas }
+    : (schemas ?? {});
+
   return (req, res, next) => {
     const { body, query, params } = req;
 
     try {
-      if (body && schemas.body) {
-        assign(req, 'body', schemas.body.parse(body));
+      if (body && normalizedSchemas.body) {
+        assign(req, 'body', normalizedSchemas.body.parse(body));
       }
 
-      if (query && schemas.query) {
-        assign(req, 'query', schemas.query.parse(query));
+      if (query && normalizedSchemas.query) {
+        assign(req, 'query', normalizedSchemas.query.parse(query));
       }
 
-      if (params && schemas.params) {
-        assign(req, 'params', schemas.params.parse(params));
+      if (params && normalizedSchemas.params) {
+        assign(req, 'params', normalizedSchemas.params.parse(params));
       }
 
       next();

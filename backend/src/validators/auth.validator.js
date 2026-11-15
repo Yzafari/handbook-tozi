@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { JOB_ROLE_VALUES } from '../config/job-roles.js';
+import { PROVINCE_VALUES } from '../config/provinces.js';
 
 const email = z
   .string({ required_error: 'ایمیل الزامی است', invalid_type_error: 'ایمیل نامعتبر است' })
@@ -35,6 +37,8 @@ export const registerSchema = {
     password: strongPassword,
     fullName,
     phone,
+    jobRole: z.enum(JOB_ROLE_VALUES).optional(),
+    province: z.enum(PROVINCE_VALUES).optional(),
   }),
 };
 
@@ -57,3 +61,4 @@ export const changePasswordSchema = {
     newPassword: strongPassword,
   }),
 };
+export const refreshTokenSchema = z.object({ refreshToken: z.string().regex(/^[a-f0-9]{64}$/i) });

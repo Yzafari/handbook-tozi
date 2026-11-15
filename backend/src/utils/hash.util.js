@@ -1,32 +1,35 @@
+import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
-const SALT_ROUNDS = 10;
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
-const IV_LENGTH = 16;
+const SALT_ROUNDS = 12;
+const IV_LENGTH = 12;
 
-export function hashPassword(password) {
-  return bcrypt.hash(password, SALT_ROUNDS);
+function getEncryptionKey() {
+  const raw = process.env.ENCRYPTION_KEY;
+  if (!raw || !/^[0-9a-fA-F]{64}$/.test(raw)) {
+    throw new Error('ENCRYPTION_KEY must be configured as 64 hexadecimal characters');
+  }
+  return Buffer.from(raw, 'hex');
 }
 
-export async function comparePassword(password, hash) {
-  return bcrypt.compare(password, hash);
-}
+export function hashPassword(password) { return bcrypt.hash(password, SALT_ROUNDS); }
+export async function comparePassword(password, hash) { return bcrypt.compare(password, hash); }
 
 export function encrypt(text) {
+  if (text === null || text === undefined || text === '') return null;
   const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY), iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
+  const cipher = crypto.createCipheriv('aes-256-gcm', getEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(String(text), 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
-  return iv.toString('hex') + ':' + encrypted + ':' + tag.toString('hex');
+  return `${iv.toString('hex')}:${encrypted.toString('hex')}:${tag.toString('hex')}`;
 }
 
-export function decrypt(text) {
-  const [iv, encrypted, tag] = text.split(':');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY), Buffer.from(iv, 'hex'));
-  decipher.setAuthTag(Buffer.from(tag, 'hex'));
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
+export function decrypt(value) {
+  if (!value) return null;
+  const [ivHex, encryptedHex, tagHex] = String(value).split(':');
+  if (!ivHex || !encryptedHex || !tagHex) throw new Error('Encrypted value has an invalid format');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', getEncryptionKey(), Buffer.from(ivHex, 'hex'));
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  return Buffer.concat([decipher.update(Buffer.from(encryptedHex, 'hex')), decipher.final()]).toString('utf8');
 }

@@ -1,9 +1,6 @@
 
 import prisma from '../config/database.js';
-import {
-  hashPassword,
-  comparePassword,
-} from '../utils/hash.util.js';
+import { hashPassword, comparePassword, encrypt } from '../utils/hash.util.js';
 
 import {
   signAccessToken,
@@ -14,6 +11,7 @@ import {
 import { AppError } from '../utils/response.util.js';
 import { logEvent } from './audit.service.js';
 import { createNotification } from './notification.service.js';
+import { deleteCachedJson } from './cache/redis-cache.js';
 import { AUDIT_ACTIONS, AUTH } from '../config/constants.js';
 
 // Dummy bcrypt hash for timing protection when user does not exist.
@@ -35,7 +33,10 @@ export function toPublicUser(dbUser) {
     id: dbUser.id,
     email: dbUser.email,
     name: dbUser.name,
+    fullName: dbUser.name,
     role: dbUser.role,
+    jobRole: dbUser.jobRole ?? null,
+    province: dbUser.province ?? null,
     createdAt: dbUser.createdAt,
   };
 }
@@ -65,6 +66,9 @@ export async function register(data) {
       email: data.email,
       password: passwordHash,
       name: data.fullName || data.name || 'کاربر جدید',
+      jobRole: data.jobRole ?? null,
+      province: data.province ?? null,
+      phoneEncrypted: data.phone ? encrypt(data.phone) : null,
       role: 'USER',
     },
   });
@@ -86,48 +90,42 @@ export async function login({ email, password }) {
     where: { email },
   });
 
-  // Timing protection.
+  const now = new Date();
+  if (user?.lockedUntil && user.lockedUntil > now) {
+    throw new AppError(423, 'ACCOUNT_LOCKED', 'حساب کاربری موقتا قفل شده است');
+  }
+
+  // A previous lock has expired: start a fresh failure window.
+  if (user?.lockedUntil && user.lockedUntil <= now) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginCount: 0, lockedUntil: null },
+    });
+    user.failedLoginCount = 0;
+    user.lockedUntil = null;
+  }
+
+  // Timing protection: perform a dummy hash comparison for unknown accounts.
   const isValid = user
     ? await comparePassword(password, user.password)
     : await comparePassword(password, DUMMY_HASH);
 
-  if (!user || !isValid) {
-    if (user) {
-      const failed = user.failedLoginCount + 1;
-
-      const lockedUntil =
-        failed >= AUTH.MAX_FAILED
-          ? new Date(Date.now() + AUTH.LOCK_MINUTES * 60000)
-          : null;
-
-      await prisma.user.update({
+  if (!user || !isValid || user.isActive === false) {
+    if (user && user.isActive !== false) {
+      const updated = await prisma.user.update({
         where: { id: user.id },
-        data: {
-          failedLoginCount: failed,
-          lockedUntil,
-        },
+        data: { failedLoginCount: { increment: 1 } },
+        select: { failedLoginCount: true },
       });
-
-      // req was undefined in the previous implementation.
-      await logEvent({
-        userId: user.id,
-        action: AUDIT_ACTIONS.LOGIN_FAILED,
-      });
+      if (updated.failedLoginCount >= AUTH.MAX_FAILED) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lockedUntil: new Date(Date.now() + AUTH.LOCK_MINUTES * 60000) },
+        });
+      }
+      await logEvent({ userId: user.id, action: AUDIT_ACTIONS.LOGIN_FAILED });
     }
-
-    throw new AppError(
-      401,
-      'UNAUTHORIZED',
-      'ایمیل یا رمز عبور اشتباه است'
-    );
-  }
-
-  if (user.lockedUntil && user.lockedUntil > new Date()) {
-    throw new AppError(
-      423,
-      'ACCOUNT_LOCKED',
-      'حساب کاربری موقتا قفل شده است'
-    );
+    throw new AppError(401, 'UNAUTHORIZED', 'ایمیل یا رمز عبور اشتباه است');
   }
 
   const {
@@ -160,6 +158,8 @@ export async function login({ email, password }) {
   const accessToken = signAccessToken({
     sub: user.id,
     role: user.role,
+    jobRole: user.jobRole ?? null,
+    tokenVersion: user.tokenVersion ?? 0,
   });
 
   await logEvent({
@@ -197,19 +197,16 @@ export async function refresh(oldRefreshToken, req) {
 
   if (
     !storedToken ||
+    storedToken.user?.isActive === false ||
     storedToken.revokedAt ||
     storedToken.expiresAt < new Date()
   ) {
     if (storedToken && storedToken.revokedAt) {
-      await prisma.refreshToken.updateMany({
-        where: {
-          userId: storedToken.userId,
-          revokedAt: null,
-        },
-        data: {
-          revokedAt: new Date(),
-        },
-      });
+      await prisma.$transaction([
+        prisma.refreshToken.updateMany({ where: { userId: storedToken.userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+        prisma.user.update({ where: { id: storedToken.userId }, data: { tokenVersion: { increment: 1 } } }),
+      ]);
+      await deleteCachedJson(`auth:user:${storedToken.userId}`);
 
       await logEvent({
         userId: storedToken.userId,
@@ -231,28 +228,37 @@ export async function refresh(oldRefreshToken, req) {
     expiresAt,
   } = generateRefreshToken();
 
-  await prisma.$transaction([
-    prisma.refreshToken.update({
-      where: { id: storedToken.id },
-      data: {
-        revokedAt: new Date(),
-      },
-    }),
-
-    prisma.refreshToken.create({
+  const rotated = await prisma.$transaction(async (tx) => {
+    const now = new Date();
+    const claimed = await tx.refreshToken.updateMany({
+      where: { id: storedToken.id, revokedAt: null, expiresAt: { gt: now } },
+      data: { revokedAt: now },
+    });
+    if (claimed.count !== 1) {
+      await tx.refreshToken.updateMany({
+        where: { userId: storedToken.userId, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      return false;
+    }
+    await tx.refreshToken.create({
       data: {
         userId: storedToken.userId,
         tokenHash: newHash,
         expiresAt,
-        ip: req.ip,
-        userAgent: req.headers['user-agent'],
+        ip: req?.ip ?? null,
+        userAgent: req?.headers?.['user-agent'] ?? null,
       },
-    }),
-  ]);
+    });
+    return true;
+  });
+  if (!rotated) throw new AppError(401, 'UNAUTHORIZED', 'توکن قبلاً استفاده یا باطل شده است');
 
   const accessToken = signAccessToken({
     sub: storedToken.user.id,
     role: storedToken.user.role,
+    jobRole: storedToken.user.jobRole ?? null,
+    tokenVersion: storedToken.user.tokenVersion ?? 0,
   });
 
   await logEvent({
@@ -326,6 +332,7 @@ export async function changePassword(
       where: { id: userId },
       data: {
         password: newHash,
+        tokenVersion: { increment: 1 },
       },
     }),
 
@@ -340,6 +347,7 @@ export async function changePassword(
     }),
   ]);
 
+  await deleteCachedJson(`auth:user:${userId}`);
   await logEvent({
     userId,
     action: AUDIT_ACTIONS.PASSWORD_CHANGED,

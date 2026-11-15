@@ -2,8 +2,10 @@ import app from './app.js';
 import prisma from './config/database.js';
 import { startCronJobs } from './services/cron.service.js';
 import logger from './utils/logger.util.js';
+import { env } from './config/env.js';
+import { closeRedisCache } from './services/cache/redis-cache.js';
 
-const port = Number(process.env.PORT) || 3000;
+const port = env.PORT;
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 const server = app.listen(port, () => {
@@ -46,7 +48,8 @@ async function shutdown(signal) {
     logger.info('HTTP server closed.');
 
     await prisma.$disconnect();
-    logger.info('Database connection closed.');
+    await closeRedisCache();
+    logger.info('Database and cache connections closed.');
 
     clearTimeout(forceExitTimer);
     process.exit(0);

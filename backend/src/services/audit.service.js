@@ -6,7 +6,7 @@ export async function logEvent({ userId, action, entity, entityId, req, metadata
     // ساخت آبجکت details به صورت JSON String که با دیتابیس هماهنگ باشد
     const detailsData = {
       entity: entity ?? null,
-      entityId: entityId !== null ? String(entityId) : null,
+      entityId: entityId != null ? String(entityId) : null,
       ip: req?.ip ?? null,
       userAgent: req?.get?.('user-agent')?.slice(0, 255) ?? null,
       metadata: metadata ?? undefined,

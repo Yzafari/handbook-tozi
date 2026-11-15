@@ -1,4 +1,4 @@
-import { prisma } from '../prisma.js';
+import prisma from '../config/database.js';
 
 
 export async function listActivePlans() {
@@ -17,6 +17,6 @@ export async function getPlanById(id) {
 
 export function toPublicPlan(plan) {
   if (!plan) return null;
-  const { id, name, description, price, duration, createdAt, updatedAt } = plan;
-  return { id, name, description, price, duration, createdAt, updatedAt };
+  const { id, name, description, price, durationDays, createdAt, updatedAt } = plan;
+  return { id, name, description, price, priceToman: price, durationDays, duration: durationDays, createdAt, updatedAt };
 }

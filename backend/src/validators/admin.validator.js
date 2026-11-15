@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { JOB_ROLE_VALUES } from '../config/job-roles.js';
+import { PROVINCE_VALUES } from '../config/provinces.js';
 
 // Query strings arrive as strings, and clients often send `?status=` for an
 // unset filter. Normalize blanks to undefined so `.optional()`/`.default()`
@@ -15,12 +17,12 @@ const booleanish = z.preprocess((value) => {
   return value;
 }, z.boolean({ invalid_type_error: 'must be a boolean' }));
 
-const roleEnum = z.enum(['ADMIN', 'USER'], {
-  errorMap: () => ({ message: 'role must be one of ADMIN, USER' }),
+const roleEnum = z.enum(['ADMIN', 'SUPER_ADMIN', 'USER'], {
+  errorMap: () => ({ message: 'role must be one of ADMIN, SUPER_ADMIN, USER' }),
 });
 
-const paymentStatusEnum = z.enum(['PENDING', 'COMPLETED', 'FAILED'], {
-  errorMap: () => ({ message: 'status must be one of PENDING, COMPLETED, FAILED' }),
+const paymentStatusEnum = z.enum(['PENDING', 'SUCCESS', 'FAILED'], {
+  errorMap: () => ({ message: 'status must be one of PENDING, SUCCESS, FAILED' }),
 });
 
 const sortOrderEnum = z.enum(['asc', 'desc'], {
@@ -68,6 +70,8 @@ export const updateUserSchema = z.object({
     .optional(),
   role: roleEnum.optional(),
   isActive: booleanish.optional(),
+  jobRole: z.enum(JOB_ROLE_VALUES).optional(),
+  province: z.enum(PROVINCE_VALUES).optional(),
 });
 
 export const listUsersQuery = paginationQuerySchema.extend({
@@ -84,8 +88,8 @@ export const listUsersQuery = paginationQuerySchema.extend({
   sortBy: z.preprocess(
     emptyToUndefined,
     z
-      .enum(['createdAt', 'fullName', 'email'], {
-        errorMap: () => ({ message: 'sortBy must be one of createdAt, fullName, email' }),
+      .enum(['createdAt', 'name', 'email'], {
+        errorMap: () => ({ message: 'sortBy must be one of createdAt, name, email' }),
       })
       .default('createdAt')
   ),
@@ -95,6 +99,7 @@ export const revenueQuerySchema = z
   .object({
     from: z.preprocess(emptyToUndefined, z.coerce.date().optional()),
     to: z.preprocess(emptyToUndefined, z.coerce.date().optional()),
+    days: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(365).default(30)),
     groupBy: z.preprocess(
       emptyToUndefined,
       z
@@ -105,10 +110,7 @@ export const revenueQuerySchema = z
     ),
     planId: z.preprocess(
       emptyToUndefined,
-      z.coerce
-        .number({ invalid_type_error: 'planId must be a number' })
-        .int('planId must be an integer')
-        .positive('planId must be a positive integer')
+      z.string().trim().min(1).max(128)
         .optional()
     ),
   })
@@ -120,20 +122,15 @@ export const revenueQuerySchema = z
 export const paymentFilterSchema = paginationQuerySchema
   .extend({
     status: z.preprocess(emptyToUndefined, paymentStatusEnum.optional()),
+    search: z.preprocess(emptyToUndefined, z.string().trim().max(120).optional()),
     userId: z.preprocess(
       emptyToUndefined,
-      z.coerce
-        .number({ invalid_type_error: 'userId must be a number' })
-        .int('userId must be an integer')
-        .positive('userId must be a positive integer')
+      z.string().trim().min(1).max(128)
         .optional()
     ),
     planId: z.preprocess(
       emptyToUndefined,
-      z.coerce
-        .number({ invalid_type_error: 'planId must be a number' })
-        .int('planId must be an integer')
-        .positive('planId must be a positive integer')
+      z.string().trim().min(1).max(128)
         .optional()
     ),
     from: z.preprocess(emptyToUndefined, z.coerce.date().optional()),
@@ -183,10 +180,8 @@ export const auditQuery = z.object({
     emptyToUndefined,
     z.coerce.number().int().min(1).max(100).default(10)
   ),
-  adminId: z.preprocess(
-    emptyToUndefined,
-    z.coerce.number().int().positive().optional()
-  ),
+  adminId: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(128).optional()),
+  userId: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(128).optional()),
   action: z.preprocess(
     emptyToUndefined,
     z.string().optional()
@@ -210,7 +205,7 @@ export const createUserSchema = z.object({
 });
 
 export const idParamSchema = z.object({
-  id: z.preprocess(emptyToUndefined, z.coerce.number().int().positive('id must be a positive integer')),
+  id: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(128)),
 });
 
 // Aliases matching the names imported by backend/src/routes/admin.routes.js.

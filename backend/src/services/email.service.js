@@ -1,44 +1,39 @@
+import 'dotenv/config';
 import nodemailer from 'nodemailer';
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: 'your-email@gmail.com',
-    pass: 'your-email-password',
-  },
-});
+let transporter;
+function getTransporter() {
+  if (transporter) return transporter;
+  const host = process.env.SMTP_HOST;
+  if (!host) return null;
+  transporter = nodemailer.createTransport({
+    host,
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: String(process.env.SMTP_SECURE || 'false') === 'true',
+    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' } : undefined,
+  });
+  return transporter;
+}
 
 export async function sendMail(to, subject, text) {
-  const mailOptions = {
-    from: 'your-email@gmail.com',
-    to,
-    subject,
-    text,
-  };
-
+  const transport = getTransporter();
+  if (!transport || !to) return false;
   try {
-    await transporter.sendMail(mailOptions);
+    await transport.sendMail({ from: process.env.MAIL_FROM || 'هندبوک توزیع <no-reply@example.invalid>', to, subject, text });
     return true;
   } catch (error) {
-    console.error('Error sending email:', error);
+    // Never log credentials or message content.
+    console.error('Email delivery failed:', error?.message);
     return false;
   }
 }
 
 export async function sendExpiryReminderEmail(user) {
-  const subject = 'Plan Expiry Reminder';
-  const text = `Hello ${user.fullName}, your plan is expiring soon. Please renew it before it expires.`;
-  return sendMail(user.email, subject, text);
+  return sendMail(user.email, 'یادآوری پایان اشتراک', `سلام ${user.name ?? 'کاربر'}، اعتبار اشتراک شما به‌زودی پایان می‌یابد.`);
 }
-
 export async function sendExpiredEmail(user) {
-  const subject = 'Plan Expired';
-  const text = `Hello ${user.fullName}, your plan has expired. Please renew it to continue using our services.`;
-  return sendMail(user.email, subject, text);
+  return sendMail(user.email, 'پایان اشتراک', `سلام ${user.name ?? 'کاربر'}، اعتبار اشتراک شما پایان یافته است.`);
 }
-
 export async function sendPaymentSuccessEmail(user, plan) {
-  const subject = 'Payment Successful';
-  const text = `Hello ${user.fullName}, your payment for ${plan.name} has been successful.`;
-  return sendMail(user.email, subject, text);
+  return sendMail(user.email, 'پرداخت موفق', `سلام ${user.name ?? 'کاربر'}، پرداخت پلن ${plan.name} با موفقیت انجام شد.`);
 }

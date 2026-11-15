@@ -44,7 +44,7 @@ export async function cancelSubscription(userId) {
 
   const updated = await prisma.subscription.update({
     where: { id: sub.id },
-    data: { status: 'CANCELLED' },
+    data: { status: 'CANCELED' },
   });
 
   await logEvent({
@@ -103,7 +103,7 @@ export async function expireDueSubscriptions() {
   for (const sub of dueSubs) {
     await prisma.subscription.update({
       where: { id: sub.id },
-      data: { status: 'CANCELLED' },
+      data: { status: 'EXPIRED' },
     });
 
     await createNotification({

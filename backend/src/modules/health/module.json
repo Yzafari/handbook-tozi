@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "name": "health",
+  "version": "1.0.0",
+  "basePath": "/health",
+  "dependencies": [],
+  "requires": ["postgresql", "document-storage", "opensearch"]
+}

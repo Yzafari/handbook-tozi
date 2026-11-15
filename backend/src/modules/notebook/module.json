@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "notebook",
+  "version": "1.0.0",
+  "basePath": "/notebook",
+  "dependencies": [],
+  "requires": [
+    "auth",
+    "postgresql"
+  ],
+  "syncEntities": [
+    "NotebookEntry"
+  ]
+}

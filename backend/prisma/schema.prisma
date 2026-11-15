@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   USER
   ADMIN
+  SUPER_ADMIN
 }
 
 enum SubscriptionStatus {
@@ -24,22 +25,38 @@ enum PaymentStatus {
   FAILED
 }
 
+enum DocumentVisibility {
+  PUBLIC
+  ROLE_RESTRICTED
+  PRIVATE
+}
+
 model User {
   id            String         @id @default(cuid())
   email         String         @unique
   password      String
   name          String?
   role          Role           @default(USER)
+  jobRole       String?
+  province      String?
   failedLoginCount Int       @default(0)
+  tokenVersion     Int       @default(0)
   lockedUntil      DateTime?
   lastLoginAt      DateTime?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  isActive      Boolean        @default(true)
+  phoneEncrypted String?
+  avatarUrl     String?
   subscriptions Subscription[]
   payments      Payment[]
   adminLogs     AdminLog[]
   refreshTokens RefreshToken[]
-  Notification  Notification[]
+  notifications Notification[]
+  documents     Document[]
+  syncRecords   SyncRecord[]
+  syncOperations SyncOperation[]
+  ocrJobs       OcrJob[]
 }
 
 model Plan {
@@ -67,6 +84,9 @@ model Subscription {
   
   user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan      Plan               @relation(fields: [planId], references: [id])
+  payments  Payment[]
+
+  @@index([userId, status, endDate])
 }
 
 model Payment {
@@ -79,9 +99,19 @@ model Payment {
   status      PaymentStatus @default(PENDING)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+  amountToman Int?
+  durationDays Int          @default(30)
+  cardPanMasked String?
+  verifiedAt  DateTime?
+  subscriptionId String?
+  idempotencyKey String?       @unique
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan        Plan          @relation(fields: [planId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([subscriptionId])
 }
 
 model AdminLog {
@@ -103,6 +133,8 @@ model RefreshToken {
   revokedAt DateTime?
   ip        String?
   userAgent String?
+
+  @@index([userId, revokedAt])
 }
 model Notification {
   id        Int    @id @default(autoincrement())
@@ -110,9 +142,116 @@ model Notification {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
   body      String
+  type      String   @default("GENERAL")
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
   @@index([userId])
 }
 
+
+
+model Document {
+  id              String             @id @default(cuid())
+  title           String
+  originalName    String
+  sourcePath      String?
+  mimeType        String
+  sizeBytes       Int
+  checksumSha256  String             @unique
+  storageKey      String             @unique
+  visibility      DocumentVisibility @default(PUBLIC)
+  accessRoles     String[]           @default([])
+  accessJobRoles  String[]           @default([])
+  ownerId         String?
+  description     String?
+  pageCount       Int?
+  language        String             @default("fa")
+  indexStatus     String             @default("PENDING")
+  indexedAt       DateTime?
+  isActive        Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  owner           User?              @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  indexJobs       DocumentIndexJob[]
+
+  @@index([visibility, isActive, createdAt])
+  @@index([ownerId, createdAt])
+  @@index([indexStatus, updatedAt])
+}
+
+model DocumentIndexJob {
+  id          String    @id @default(cuid())
+  documentId  String
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now())
+  lockedAt    DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  document    Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt, createdAt])
+  @@index([documentId, createdAt])
+}
+
+
+model SyncRecord {
+  id          String   @id @default(cuid())
+  userId      String
+  moduleName  String
+  entityType  String
+  entityId    String
+  version     Int      @default(1)
+  payload     Json
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleName, entityType, entityId])
+  @@index([userId, updatedAt, id])
+}
+
+model SyncOperation {
+  id              String   @id @default(cuid())
+  operationId     String   @unique
+  userId          String
+  moduleName      String
+  entityType      String
+  entityId        String
+  operation       String
+  requestHash     String   @default("")
+  resultStatus    String
+  resultVersion   Int?
+  conflictReason  String?
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+
+model OcrJob {
+  id            String   @id @default(cuid())
+  userId        String
+  storageKey    String   @unique
+  storageDeleted Boolean  @default(false)
+  mimeType      String
+  sizeBytes     Int
+  checksumSha256 String
+  status        String   @default("PENDING")
+  attempts      Int      @default(0)
+  availableAt   DateTime @default(now())
+  lockedAt      DateTime?
+  resultText    String?
+  confidence    Float?
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, availableAt, createdAt])
+}
