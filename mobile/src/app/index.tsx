@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
-import { getHomeModules } from '../core/modules/registry.js';
+import { getHomeModules, type AppModule } from '../core/modules/registry';
 import { useAppSettings } from '../core/settings/AppSettingsContext';
 import { getJobRoleAvatar } from '../core/localization/labels';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +14,15 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const { t, isDark, direction } = useAppSettings();
   const moduleKeys: Record<string, Parameters<typeof t>[0]> = { 'bill-payment': 'billPayment', 'bill-calculator': 'billCalculator', engineering: 'engineering', safety: 'safety', forms: 'forms', notebook: 'notebookModule' };
+  // Translation dictionaries are not guaranteed to contain every module key, and
+  // `moduleKeys` is not guaranteed to contain every registry id. Fall back to the
+  // registry label so a tile never renders with an empty caption.
+  const moduleLabel = (item: Readonly<AppModule>): string => {
+    const key = moduleKeys[item.id];
+    if (!key) return item.label;
+    const translated: unknown = t(key);
+    return typeof translated === 'string' && translated.trim().length > 0 ? translated : item.label;
+  };
   const departments = [{ key: 'operations', label: t('operations') }, { key: 'engineeringPlanning', label: t('engineeringPlanning') }, { key: 'sales', label: t('sales') }, { key: 'consultant', label: t('consultant') }];
   const profileIcon = getJobRoleAvatar(user?.jobRole);
   return (
@@ -45,11 +54,11 @@ export default function HomeScreen() {
         <View style={[styles.grid, direction === 'ltr' && styles.rowLtr]}>
           {modules.map(item => item.status === 'active' && item.route ? (
             <Pressable key={item.id} style={[styles.moduleCard, isDark && styles.cardDark]} onPress={() => router.push(item.route as Href)}>
-              <Text style={styles.moduleIcon}>{item.icon}</Text><Text style={[styles.moduleLabel, isDark && styles.textDark]}>{t(moduleKeys[item.id])}</Text>
+              <Text style={styles.moduleIcon}>{item.icon}</Text><Text style={[styles.moduleLabel, isDark && styles.textDark]}>{moduleLabel(item)}</Text>
             </Pressable>
           ) : (
             <View key={item.id} style={[styles.moduleCard, styles.modulePending, isDark && styles.cardDark]}>
-              <Text style={styles.moduleIcon}>{item.icon}</Text><Text style={[styles.moduleLabel, isDark && styles.textDark]}>{t(moduleKeys[item.id])}</Text>
+              <Text style={styles.moduleIcon}>{item.icon}</Text><Text style={[styles.moduleLabel, isDark && styles.textDark]}>{moduleLabel(item)}</Text>
               {item.status === 'coming-soon' && <Text style={styles.pendingLabel}>{t('comingSoon')}</Text>}
             </View>
           ))}
