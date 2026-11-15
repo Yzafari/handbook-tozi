@@ -65,8 +65,17 @@ const schema = z
     SMTP_SECURE: bool('false'),
   })
   .superRefine((v, ctx) => {
-    if (v.NODE_ENV !== 'production') return;
     const bad = (path, message) => ctx.addIssue({ code: 'custom', path: [path], message });
+
+    // SameSite=None is rejected by browsers unless the cookie is also Secure.
+    // Enforce this in every environment so a misconfigured dev box does not
+    // silently drop the refresh cookie.
+    if (v.COOKIE_SAME_SITE === 'none' && !v.COOKIE_SECURE) {
+      bad('COOKIE_SECURE', 'SameSite=None requires COOKIE_SECURE=true');
+    }
+
+    if (v.NODE_ENV !== 'production') return;
+
     if (v.JWT_ACCESS_SECRET.startsWith('dev_only') || v.JWT_ACCESS_SECRET.startsWith('REPLACE_')) bad('JWT_ACCESS_SECRET', 'a unique production secret is required');
     if (v.PAYMENT_WEBHOOK_SECRET.startsWith('dev_only') || v.PAYMENT_WEBHOOK_SECRET.startsWith('REPLACE_')) bad('PAYMENT_WEBHOOK_SECRET', 'a unique production secret is required');
     if (v.ENCRYPTION_KEY.toLowerCase() === DEV_ENCRYPTION_KEY) bad('ENCRYPTION_KEY', 'dev default not allowed in production');
@@ -74,15 +83,31 @@ const schema = z
     if (v.ZARINPAL_SANDBOX) bad('ZARINPAL_SANDBOX', 'sandbox mode must be disabled in production');
     if (!v.COOKIE_SECURE) bad('COOKIE_SECURE', 'secure cookies must be enabled in production');
     if (!v.FRONTEND_URL.startsWith('https://')) bad('FRONTEND_URL', 'HTTPS frontend URL is required in production');
+    if (v.APP_BASE_URL && !v.APP_BASE_URL.startsWith('https://')) bad('APP_BASE_URL', 'HTTPS app base URL is required in production');
+
     const allowedOrigins = v.CORS_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean);
-    if (!allowedOrigins.length || allowedOrigins.some(origin => { try { const parsed = new URL(origin); return parsed.protocol !== 'https:' || parsed.origin !== origin; } catch { return true; } })) {
+    if (!allowedOrigins.length) {
       bad('CORS_ORIGINS', 'production CORS origins must be explicit valid HTTPS origins');
+    } else {
+      for (const origin of allowedOrigins) {
+        let parsed;
+        try {
+          parsed = new URL(origin);
+        } catch {
+          bad('CORS_ORIGINS', `invalid CORS origin: ${origin}`);
+          continue;
+        }
+        if (parsed.protocol !== 'https:') bad('CORS_ORIGINS', `CORS origin must use HTTPS: ${origin}`);
+        if (parsed.origin !== origin) bad('CORS_ORIGINS', `CORS origin must be a bare origin without path, query, or trailing slash: ${origin}`);
+      }
     }
+
     if (v.DATACENTER_SIGNING_SECRET.startsWith('REPLACE_') || v.DATACENTER_SIGNING_SECRET.startsWith('dev_only')) bad('DATACENTER_SIGNING_SECRET', 'a unique production signing secret is required');
     if (!v.DATACENTER_PUBLIC_URL || !v.DATACENTER_PUBLIC_URL.startsWith('https://')) bad('DATACENTER_PUBLIC_URL', 'a public HTTPS storage URL is required in production');
     if (!v.ZARINPAL_CALLBACK_URL.startsWith('https://')) bad('ZARINPAL_CALLBACK_URL', 'HTTPS callback URL is required in production');
     if (!v.DATACENTER_URL.startsWith('https://')) bad('DATACENTER_URL', 'HTTPS datacenter URL is required in production');
     if (v.DATACENTER_INTERNAL_TOKEN.length < 32) bad('DATACENTER_INTERNAL_TOKEN', 'a strong datacenter token is required in production');
+    if (v.DATACENTER_INTERNAL_TOKEN.startsWith('REPLACE_') || v.DATACENTER_INTERNAL_TOKEN.startsWith('replace-')) bad('DATACENTER_INTERNAL_TOKEN', 'a unique production datacenter token is required');
     if (!v.OPENSEARCH_URL.startsWith('https://')) bad('OPENSEARCH_URL', 'HTTPS OpenSearch URL is required in production');
     if (!v.OPENSEARCH_USERNAME || !v.OPENSEARCH_PASSWORD) bad('OPENSEARCH_USERNAME', 'OpenSearch credentials are required in production');
     if (!v.REDIS_URL) bad('REDIS_URL', 'Redis is required in production for shared rate limits and cache');

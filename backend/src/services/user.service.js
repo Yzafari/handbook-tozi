@@ -4,6 +4,7 @@ import { AppError } from '../utils/response.util.js';
 import { encrypt, decrypt } from '../utils/hash.util.js';
 import { toPublicSubscription } from './subscription.service.js';
 import { PaymentStatus, SubscriptionStatus } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
 import { UPLOADS_DIR } from '../config/paths.js';
@@ -62,35 +63,90 @@ export async function updateMe(userId, data) {
 export async function saveAvatar(userId, file) {
   if (!file) throw new AppError(400, 'VALIDATION_ERROR', 'فایلی ارسال نشده است');
 
+  const uploadsRoot = path.resolve(UPLOADS_ROOT);
+  const sourcePath = path.resolve(file.path);
+
+  // Reject symlinks and non-regular files. `open()` follows symlinks, so a
+  // symlinked upload path could otherwise be renamed into UPLOADS_DIR and then
+  // served by express.static as the symlink target.
+  const sourceStat = await fs.promises.lstat(sourcePath).catch(() => null);
+  if (!sourceStat || !sourceStat.isFile()) {
+    await fs.promises.unlink(sourcePath).catch(() => {});
+    throw new AppError(400, 'INVALID_FILE', 'فایل ارسالی معتبر نیست');
+  }
+
+  // Validate the real content type from the file header. The client-supplied
+  // `file.mimetype` is untrusted, so the magic bytes are the source of truth.
   const signatures = {
-    'image/jpeg': buffer => buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff,
-    'image/png': buffer => buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
-    'image/webp': buffer => buffer.subarray(0, 4).toString() === 'RIFF' && buffer.subarray(8, 12).toString() === 'WEBP',
-    'image/gif': buffer => ['GIF87a', 'GIF89a'].includes(buffer.subarray(0, 6).toString()),
+    'image/jpeg': { ext: '.jpg', test: (b) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+    'image/png': { ext: '.png', test: (b) => b.length >= 8 && b.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) },
+    'image/webp': { ext: '.webp', test: (b) => b.length >= 12 && b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP' },
+    'image/gif': { ext: '.gif', test: (b) => b.length >= 6 && ['GIF87a', 'GIF89a'].includes(b.subarray(0, 6).toString()) },
   };
-  let validImage = false;
+
+  let detectedType = null;
   try {
-    const handle = await fs.promises.open(file.path, 'r');
+    const handle = await fs.promises.open(sourcePath, 'r');
     try {
       const header = Buffer.alloc(12);
       const { bytesRead } = await handle.read(header, 0, header.length, 0);
-      validImage = Boolean(signatures[file.mimetype]?.(header.subarray(0, bytesRead)));
-    } finally { await handle.close(); }
-  } catch { validImage = false; }
-  if (!validImage) {
-    await fs.promises.unlink(file.path).catch(() => {});
+      const slice = header.subarray(0, bytesRead);
+      for (const [type, def] of Object.entries(signatures)) {
+        if (def.test(slice)) { detectedType = type; break; }
+      }
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    detectedType = null;
+  }
+
+  if (!detectedType) {
+    await fs.promises.unlink(sourcePath).catch(() => {});
     throw new AppError(415, 'INVALID_FILE_CONTENT', 'محتوای فایل با فرمت تصویر اعلام‌شده مطابقت ندارد');
   }
 
   const oldUser = await prisma.user.findUnique({ where: { id: userId } });
-  if (!oldUser) throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
+  if (!oldUser) {
+    await fs.promises.unlink(sourcePath).catch(() => {});
+    throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
+  }
 
-  const avatarUrl = `/uploads/${file.filename}`;
+  // Store the avatar under a server-generated name with the extension that
+  // matches the validated content. This prevents a polyglot upload (valid
+  // image header followed by HTML/JS) from being served as text/html by the
+  // static handler, and it keeps every stored path inside UPLOADS_DIR.
+  const safeName = `${randomUUID()}${signatures[detectedType].ext}`;
+  const safePath = path.join(uploadsRoot, safeName);
+
+  try {
+    if (sourcePath !== safePath) {
+      try {
+        await fs.promises.rename(sourcePath, safePath);
+      } catch (error) {
+        if (error?.code === 'EXDEV') {
+          await fs.promises.copyFile(sourcePath, safePath);
+          await fs.promises.unlink(sourcePath).catch(() => {});
+        } else {
+          throw error;
+        }
+      }
+    }
+  } catch (error) {
+    await fs.promises.unlink(sourcePath).catch(() => {});
+    throw error;
+  }
+
+  // Keep the multer file object consistent for any caller that inspects it.
+  file.filename = safeName;
+  file.path = safePath;
+
+  const avatarUrl = `/uploads/${safeName}`;
   let user;
   try {
     user = await prisma.user.update({ where: { id: userId }, data: { avatarUrl } });
   } catch (error) {
-    await fs.promises.unlink(file.path).catch(() => {});
+    await fs.promises.unlink(safePath).catch(() => {});
     throw error;
   }
 
@@ -99,8 +155,8 @@ export async function saveAvatar(userId, file) {
   // upload directory; never follow a stored URL as a filesystem path.
   if (oldUser.avatarUrl) {
     const oldName = path.basename(oldUser.avatarUrl);
-    const oldPath = path.resolve(UPLOADS_ROOT, oldName);
-    if (oldPath.startsWith(path.resolve(UPLOADS_ROOT) + path.sep) && fs.existsSync(oldPath)) {
+    const oldPath = path.resolve(uploadsRoot, oldName);
+    if (oldPath.startsWith(uploadsRoot + path.sep) && oldPath !== safePath && fs.existsSync(oldPath)) {
       await fs.promises.unlink(oldPath).catch(() => {});
     }
   }

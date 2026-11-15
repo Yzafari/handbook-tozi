@@ -26,6 +26,18 @@ function toRial(amountToman) {
   return Math.round(Number(amountToman) * TOMAN_TO_RIAL);
 }
 
+// The only unique column written by the create below is `idempotencyKey`, so a
+// P2002 on that insert is an idempotency conflict. Prisma reports the target
+// column differently across versions/engines, so fall back to "true" only when
+// the target is not reported at all.
+function isIdempotencyConflict(error) {
+  if (error?.code !== 'P2002') return false;
+  const target = error?.meta?.target;
+  if (Array.isArray(target)) return target.includes('idempotencyKey');
+  if (typeof target === 'string') return target === 'idempotencyKey';
+  return true;
+}
+
 export function toPublicPayment(payment) {
   if (!payment) return null;
   return {
@@ -44,10 +56,14 @@ export function toPublicPayment(payment) {
 /**
  * Create a PENDING payment and open a Zarinpal session for it.
  *
+ * Idempotency is enforced by the unique `idempotencyKey` column. Two concurrent
+ * requests with the same key race on the INSERT; the loser receives P2002 and
+ * is resolved below without ever creating a second gateway session.
+ *
  * @param {string} userId
- * @param {{ planId: string, durationDays?: number }} payload
+ * @param {{ planId: string, durationDays?: number, idempotencyKey?: string }} payload
  * @param {import('express').Request} [req]
- * @returns {Promise<{ payment: object, paymentUrl: string, authority: string }>}
+ * @returns {Promise<{ payment: object, paymentUrl: string, authority: string, reused?: boolean }>}
  */
 export async function createPaymentRequest(userId, payload = {}, req) {
   const planId = String(payload.planId ?? '').trim();
@@ -106,7 +122,7 @@ export async function createPaymentRequest(userId, payload = {}, req) {
       },
     });
   } catch (error) {
-    if (error?.code === 'P2002' && idempotencyKey) {
+    if (idempotencyKey && isIdempotencyConflict(error)) {
       const previous = await prisma.payment.findUnique({ where: { idempotencyKey }, include: { plan: true } });
       if (previous?.userId === userId && previous.status === 'PENDING' && previous.authority) {
         return { payment: toPublicPayment(previous), paymentUrl: getPaymentUrl(previous.authority), authority: previous.authority, reused: true };
@@ -185,9 +201,20 @@ async function failPayment(payment, reason, req) {
 
 async function finalizePayment(payment, verification, req) {
   const outcome = await prisma.$transaction(async (tx) => {
-    // Atomic compare-and-set: only one verified callback can finalize an unverified payment row.
+    // Atomic compare-and-set. The WHERE clause is the security boundary for
+    // late callbacks: a FAILED row may only be promoted to SUCCESS when
+    //   - the authority still matches the one we verified,
+    //   - no verification has been recorded yet (verifiedAt IS NULL),
+    //   - no subscription has been granted yet (subscriptionId IS NULL).
+    // Only one concurrent callback/webhook can satisfy all three.
     const claimed = await tx.payment.updateMany({
-      where: { id: payment.id, status: { in: ['PENDING', 'FAILED'] }, verifiedAt: null },
+      where: {
+        id: payment.id,
+        authority: payment.authority,
+        status: { in: ['PENDING', 'FAILED'] },
+        verifiedAt: null,
+        subscriptionId: null,
+      },
       data: {
         status: 'SUCCESS',
         refId: verification.refId,
@@ -253,10 +280,13 @@ async function finalizePayment(payment, verification, req) {
  * @param {import('express').Request} [req]
  */
 export async function handleCallback(params = {}, req) {
-  const authority = params.authority || params.Authority;
-  const status = params.status || params.Status;
+  const authority = params.authority ?? params.Authority;
+  const rawStatus = params.status ?? params.Status;
+  const status = rawStatus === undefined || rawStatus === null ? undefined : String(rawStatus).toUpperCase();
 
-  if (!authority) {
+  // Reject non-string authority values (e.g. ?authority=a&authority=b) before
+  // they reach Prisma, which would otherwise throw a 500 on an array.
+  if (typeof authority !== 'string' || !authority.trim()) {
     throw new AppError(400, 'VALIDATION_ERROR', 'authority الزامی است');
   }
 
@@ -276,17 +306,23 @@ export async function handleCallback(params = {}, req) {
     };
   }
 
+  // A row that already has a subscription attached must never be promoted
+  // again; that would grant a second subscription for a single charge.
+  if (payment.subscriptionId) {
+    throw new AppError(409, 'CONFLICT', 'این پرداخت قبلاً به اشتراک متصل شده است');
+  }
+
   // A timeout or a lost callback may have marked the local row FAILED even
   // though the gateway completed the charge. A late OK callback is still
   // verified server-to-server and may safely finalize an unverified row.
-  if (payment.status === 'FAILED' && status && String(status).toUpperCase() !== 'OK') {
+  if (payment.status === 'FAILED' && status && status !== 'OK') {
     throw new AppError(409, 'CONFLICT', 'این پرداخت قبلا ناموفق ثبت شده است');
   }
   if (!Number.isSafeInteger(payment.amountToman) || payment.amountToman <= 0) {
     throw new AppError(409, 'LEGACY_AMOUNT_UNKNOWN', 'مبلغ تومانی این پرداخت قدیمی مشخص نیست و برای جلوگیری از تأیید مبلغ اشتباه، قابل تأیید خودکار نیست.');
   }
 
-  if (status && String(status).toUpperCase() !== 'OK') {
+  if (status && status !== 'OK') {
     await failPayment(payment, `gateway status: ${status}`, req);
     throw new AppError(400, 'PAYMENT_CANCELLED', 'پرداخت توسط کاربر لغو شد');
   }
