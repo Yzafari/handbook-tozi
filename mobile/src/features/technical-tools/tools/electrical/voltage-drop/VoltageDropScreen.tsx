@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,6 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowRight, Zap } from 'lucide-react-native';
 import { SegmentedControl } from '../../../components/SegmentedControl';
+import { ResultDisplay } from '../../../components/ResultDisplay';
+import {
+  calculateVoltageDrop,
+  type VoltageDropResult,
+} from '../../../services/calculator.service';
+import { saveCalculationHistory } from '../../../services/history.service';
 import { useTheme } from '../../../../../core/theme/ThemeContext';
 
 type NetworkType = 'single' | 'three';
@@ -34,6 +40,31 @@ const MATERIAL_OPTIONS: { label: string; value: ConductorMaterial }[] = [
   { label: 'آلومینیوم', value: 'aluminum' },
 ];
 
+const PERSIAN_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
+const ARABIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+
+/**
+ * Converts Persian/Arabic-Indic digits and the Arabic decimal separator
+ * into a plain Latin number string so `Number()` can parse it.
+ */
+function normalizeNumericInput(value: string): string {
+  return value
+    .replace(/[۰-۹]/g, (digit) => String(PERSIAN_DIGITS.indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String(ARABIC_DIGITS.indexOf(digit)))
+    .replace(/٫/g, '.')
+    .replace(/\s/g, '');
+}
+
+function parseNumber(value: string): number | null {
+  const normalized = normalizeNumericInput(value);
+
+  if (!normalized) return null;
+
+  const parsed = Number(normalized);
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export default function VoltageDropScreen() {
   const router = useRouter();
   const { isDark } = useTheme();
@@ -44,10 +75,69 @@ export default function VoltageDropScreen() {
 
   const [current, setCurrent] = useState<string>('');
   const [length, setLength] = useState<string>('');
+  const [voltage, setVoltage] = useState<string>('');
   const [powerFactor, setPowerFactor] = useState<string>('');
 
-  const handleCalculate = () => {
-    Alert.alert('محاسبه', 'فرمول این ابزار در حال تأیید است');
+  const [result, setResult] = useState<VoltageDropResult | null>(null);
+
+  // Any input change invalidates the previously displayed result.
+  useEffect(() => {
+    setResult(null);
+  }, [current, length, voltage, powerFactor, networkType, installationMethod, conductorMaterial]);
+
+  const handleCalculate = async () => {
+    const currentValue = parseNumber(current);
+    const lengthValue = parseNumber(length);
+    const voltageValue = parseNumber(voltage);
+    const powerFactorValue = parseNumber(powerFactor);
+
+    if (
+      currentValue === null ||
+      lengthValue === null ||
+      voltageValue === null ||
+      powerFactorValue === null
+    ) {
+      Alert.alert('ورودی نامعتبر', 'لطفاً همه مقادیر را به صورت عددی وارد کنید.');
+      return;
+    }
+
+    if (currentValue <= 0 || lengthValue <= 0 || voltageValue <= 0) {
+      Alert.alert('ورودی نامعتبر', 'جریان، طول مسیر و ولتاژ باید بزرگ‌تر از صفر باشند.');
+      return;
+    }
+
+    if (powerFactorValue <= 0 || powerFactorValue > 1) {
+      Alert.alert('ورودی نامعتبر', 'ضریب توان باید عددی بین ۰ و ۱ باشد.');
+      return;
+    }
+
+    const inputs = {
+      current: currentValue,
+      length: lengthValue,
+      voltage: voltageValue,
+      powerFactor: powerFactorValue,
+      phase: networkType,
+      material: conductorMaterial,
+      method: installationMethod,
+    };
+
+    let calculated: VoltageDropResult;
+
+    try {
+      calculated = calculateVoltageDrop(inputs);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'خطای ناشناخته';
+      Alert.alert('خطا در محاسبه', message);
+      return;
+    }
+
+    setResult(calculated);
+
+    try {
+      await saveCalculationHistory('electrical.voltage-drop', inputs, calculated);
+    } catch {
+      // A history persistence failure must not hide a valid calculation result.
+    }
   };
 
   return (
@@ -133,6 +223,18 @@ export default function VoltageDropScreen() {
           </View>
 
           <View className="gap-2">
+            <Text className="text-sm font-bold text-gray-900 dark:text-white">ولتاژ (ولت)</Text>
+            <TextInput
+              value={voltage}
+              onChangeText={setVoltage}
+              keyboardType="numeric"
+              placeholder={networkType === 'single' ? 'مثلاً 220' : 'مثلاً 380'}
+              placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
+              className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-right text-sm text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+            />
+          </View>
+
+          <View className="gap-2">
             <Text className="text-sm font-bold text-gray-900 dark:text-white">ضریب توان</Text>
             <TextInput
               value={powerFactor}
@@ -148,12 +250,16 @@ export default function VoltageDropScreen() {
             activeOpacity={0.8}
             accessibilityRole="button"
             accessibilityLabel="محاسبه"
-            onPress={handleCalculate}
+            onPress={() => {
+              void handleCalculate();
+            }}
             className="mt-2 flex-row items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-3.5"
           >
             <Zap size={18} color="#FFFFFF" />
             <Text className="text-base font-bold text-white">محاسبه</Text>
           </TouchableOpacity>
+
+          {result ? <ResultDisplay result={result} /> : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
