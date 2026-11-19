@@ -37,7 +37,9 @@
     },
     "android": {
       "permissions": [
-        "CAMERA"
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ],
       "package": "com.gridhand.app",
       "versionCode": 1,
@@ -45,6 +47,12 @@
     },
     "ios": {
       "bundleIdentifier": "ir.handbookdistribution.app"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "123c5a49-fc1e-4736-84b6-fd299d3ad1a7"
+      }
     }
   }
 }
