@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { FlatList, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowRight, Search } from 'lucide-react-native';
+import { ArrowRight, History, Search } from 'lucide-react-native';
 import {
   TOOLS,
   TOOL_CATEGORY_LABELS,
@@ -108,7 +108,15 @@ export default function TechnicalToolsScreen() {
 
         <Text className="text-lg font-bold text-gray-900 dark:text-white">ابزارهای فنی</Text>
 
-        <View className="h-10 w-10" />
+        <TouchableOpacity
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="تاریخچه محاسبات"
+          onPress={() => router.push('/tools/history')}
+          className="h-10 w-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"
+        >
+          <History size={20} color={isDark ? '#E5E7EB' : '#111827'} />
+        </TouchableOpacity>
       </View>
 
       <View className="mx-4 mt-4 flex-row items-center rounded-xl border border-gray-200 bg-white px-3 py-2.5 dark:border-gray-800 dark:bg-gray-900">
