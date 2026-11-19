@@ -31,7 +31,8 @@
       "permissions": [
         "CAMERA"
       ],
-      "package": "ir.handbookdistribution.app",
+      "package": "com.gridhand.app",
+      "versionCode": 1,
       "allowBackup": false
     },
     "ios": {
