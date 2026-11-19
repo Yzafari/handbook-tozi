@@ -1,9 +1,59 @@
-import { createHistory, getUserHistory } from '../services/calculationHistory.service.js';
+import {
+  createHistory,
+  createHistoryItems,
+  getUserHistory,
+} from '../services/calculationHistory.service.js';
 
 const REQUIRED_FIELDS = ['toolId', 'toolVersion', 'inputData', 'outputData'];
 
+const MAX_SYNC_BATCH_SIZE = 500;
+
 function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+/**
+ * Validates a single sync item.
+ *
+ * @param {unknown} item
+ * @returns {string|null} An error message, or null when the item is valid.
+ */
+function validateHistoryItem(item) {
+  if (!isPlainObject(item)) {
+    return 'هر آیتم باید از نوع آبجکت باشد.';
+  }
+
+  const missingFields = REQUIRED_FIELDS.filter(
+    (field) => item[field] === undefined || item[field] === null || item[field] === ''
+  );
+
+  if (missingFields.length > 0) {
+    return `فیلدهای الزامی ارسال نشده‌اند: ${missingFields.join(', ')}`;
+  }
+
+  if (!isNonEmptyString(item.toolId) || !isNonEmptyString(item.toolVersion)) {
+    return 'toolId و toolVersion باید رشته غیرخالی باشند.';
+  }
+
+  if (!isPlainObject(item.inputData) || !isPlainObject(item.outputData)) {
+    return 'inputData و outputData باید از نوع آبجکت JSON باشند.';
+  }
+
+  if (item.sources !== undefined && item.sources !== null && !isPlainObject(item.sources)) {
+    return 'sources باید از نوع آبجکت JSON باشد.';
+  }
+
+  if (item.createdAt !== undefined && item.createdAt !== null) {
+    if (typeof item.createdAt !== 'string' || Number.isNaN(new Date(item.createdAt).getTime())) {
+      return 'createdAt باید یک تاریخ معتبر ISO باشد.';
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -23,28 +73,12 @@ export async function create(req, res) {
 
     const body = req.body ?? {};
 
-    const missingFields = REQUIRED_FIELDS.filter(
-      (field) => body[field] === undefined || body[field] === null || body[field] === ''
-    );
+    const validationError = validateHistoryItem(body);
 
-    if (missingFields.length > 0) {
+    if (validationError) {
       return res.status(400).json({
         success: false,
-        message: `فیلدهای الزامی ارسال نشده‌اند: ${missingFields.join(', ')}`,
-      });
-    }
-
-    if (!isPlainObject(body.inputData) || !isPlainObject(body.outputData)) {
-      return res.status(400).json({
-        success: false,
-        message: 'inputData و outputData باید از نوع آبجکت JSON باشند.',
-      });
-    }
-
-    if (body.sources !== undefined && body.sources !== null && !isPlainObject(body.sources)) {
-      return res.status(400).json({
-        success: false,
-        message: 'sources باید از نوع آبجکت JSON باشد.',
+        message: validationError,
       });
     }
 
@@ -72,7 +106,8 @@ export async function create(req, res) {
 
 /**
  * GET /
- * Returns all calculation history records for the authenticated user.
+ * Returns calculation history records for the authenticated user.
+ * Admins receive records for all users.
  */
 export async function getAll(req, res) {
   try {
@@ -85,7 +120,9 @@ export async function getAll(req, res) {
       });
     }
 
-    const history = await getUserHistory(userId);
+    const isAdmin = req.user?.role === 'ADMIN';
+
+    const history = await getUserHistory(userId, isAdmin);
 
     return res.status(200).json({
       success: true,
@@ -97,6 +134,73 @@ export async function getAll(req, res) {
     return res.status(500).json({
       success: false,
       message: 'خطا در دریافت تاریخچه محاسبات.',
+    });
+  }
+}
+
+/**
+ * POST /sync
+ * Bulk-inserts a batch of offline calculation history records.
+ *
+ * The request body is a JSON array of history items.
+ */
+export async function syncHistory(req, res) {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'کاربر احراز هویت نشده است.',
+      });
+    }
+
+    const items = req.body;
+
+    if (!Array.isArray(items)) {
+      return res.status(400).json({
+        success: false,
+        message: 'بدنه درخواست باید آرایه‌ای از تاریخچه محاسبات باشد.',
+      });
+    }
+
+    if (items.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: { count: 0 },
+      });
+    }
+
+    if (items.length > MAX_SYNC_BATCH_SIZE) {
+      return res.status(400).json({
+        success: false,
+        message: `حداکثر ${MAX_SYNC_BATCH_SIZE} مورد در هر درخواست سینک مجاز است.`,
+      });
+    }
+
+    for (let index = 0; index < items.length; index += 1) {
+      const validationError = validateHistoryItem(items[index]);
+
+      if (validationError) {
+        return res.status(400).json({
+          success: false,
+          message: `آیتم شماره ${index + 1} نامعتبر است: ${validationError}`,
+        });
+      }
+    }
+
+    const result = await createHistoryItems(userId, items);
+
+    return res.status(201).json({
+      success: true,
+      data: { count: result.count },
+    });
+  } catch (error) {
+    console.error('[calculationHistory.syncHistory]', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'خطا در سینک تاریخچه محاسبات.',
     });
   }
 }
