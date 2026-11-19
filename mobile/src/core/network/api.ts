@@ -1,14 +1,29 @@
 import axios from 'axios';
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import Constants from 'expo-constants';
 import { readRefreshToken, saveRefreshToken, clearRefreshToken, clearCachedUser } from '../security/secureTokens';
 
-const configuredBase = process.env.EXPO_PUBLIC_API_BASE_URL;
-if (!configuredBase) throw new Error('EXPO_PUBLIC_API_BASE_URL must be configured');
-const parsedBase = new URL(configuredBase);
-if (!['http:', 'https:'].includes(parsedBase.protocol)) throw new Error('EXPO_PUBLIC_API_BASE_URL must use HTTP or HTTPS');
-if (!__DEV__ && parsedBase.protocol !== 'https:') throw new Error('Production builds must use HTTPS for EXPO_PUBLIC_API_BASE_URL');
-const base = configuredBase.replace(/\/$/, '');
-export const getApiBaseUrl = () => `${base}/api/v1`;
+const API_PORT = 3000;
+const FALLBACK_API_BASE_URL = 'http://192.168.1.9:3000/api/v1';
+
+/**
+ * Resolves the API base URL.
+ *
+ * - In development, derives the host from the Expo dev server (`hostUri`)
+ *   so a physical device on the same LAN can reach the backend.
+ * - In production (standalone APK) or when `hostUri` is unavailable,
+ *   falls back to a hardcoded LAN address.
+ */
+export function getApiBaseUrl(): string {
+  if (__DEV__) {
+    const hostUri = Constants.expoConfig?.hostUri;
+    const host = hostUri?.split(':')[0];
+    if (host) {
+      return `http://${host}:${API_PORT}/api/v1`;
+    }
+  }
+  return FALLBACK_API_BASE_URL;
+}
 
 export const api = axios.create({ baseURL: getApiBaseUrl(), timeout: 20000, headers: { Accept: 'application/json' } });
 let accessToken: string | null = null;
