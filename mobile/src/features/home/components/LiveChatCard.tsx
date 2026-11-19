@@ -3,7 +3,8 @@ import { Text, View } from 'react-native';
 import { Play, User } from 'lucide-react-native';
 import { useTheme } from '../../../core/theme/ThemeContext';
 
-type LiveChatCardProps = {
+export type LiveChatCardProps = {
+  id: string;
   name: string;
   role: string;
   province: string;
@@ -13,6 +14,7 @@ type LiveChatCardProps = {
 };
 
 export function LiveChatCard({
+  id,
   name,
   role,
   province,
@@ -23,7 +25,10 @@ export function LiveChatCard({
   const { isDark } = useTheme();
 
   return (
-    <View className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+    <View
+      testID={`live-chat-card-${id}`}
+      className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
+    >
       <View className="flex-row items-center">
         <View className="h-10 w-10 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-950">
           <User size={20} color={isDark ? '#93C5FD' : '#1D4ED8'} />

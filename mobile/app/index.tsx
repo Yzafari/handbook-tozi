@@ -17,7 +17,7 @@ import {
 import { useTheme } from '../src/core/theme/ThemeContext';
 import { SearchBar } from '../src/features/home/components/SearchBar';
 import { PunchBanner } from '../src/features/home/components/PunchBanner';
-import { LiveChatCard } from '../src/features/home/components/LiveChatCard';
+import { LiveChatCard, type LiveChatCardProps } from '../src/features/home/components/LiveChatCard';
 import { DeputyCards } from '../src/features/home/components/DeputyCards';
 
 type QuickAccessItem = {
@@ -33,6 +33,27 @@ const QUICK_ACCESS: QuickAccessItem[] = [
   { id: 'stats', label: 'آمار', icon: BarChart3 },
   { id: 'documents', label: 'اسناد', icon: FileText },
   { id: 'other', label: 'سایر ماژول‌ها', icon: LayoutGrid },
+];
+
+const MOCK_CHATS: LiveChatCardProps[] = [
+  {
+    id: '1',
+    name: 'مهندس نمونه',
+    role: 'ناظر بهره‌برداری',
+    province: 'کرمانشاه',
+    message: 'دوستان در زمان مانور شبکه...',
+    time: '۵ دقیقه پیش',
+    isAudio: true,
+  },
+  {
+    id: '2',
+    name: 'علی احمدی',
+    role: 'تکنسین خط گرم',
+    province: 'اصفهان',
+    message: 'سلام همکار، برای پانچ امروز هماهنگ کنیم.',
+    time: '۱۰ دقیقه پیش',
+    isAudio: false,
+  },
 ];
 
 export default function HomeScreen() {
@@ -153,23 +174,18 @@ export default function HomeScreen() {
           </View>
 
           <View className="gap-3">
-            <LiveChatCard
-              name="مهندس یحیی ظفری"
-              role="کارشناس بهره‌برداری"
-              province="تهران"
-              message="پیام صوتی ۰:۴۲"
-              time="۱۰:۲۴"
-              isAudio
-            />
-
-            <LiveChatCard
-              name="علی احمدی"
-              role="تکنسین خط گرم"
-              province="اصفهان"
-              message="سلام همکار، برای پانچ امروز هماهنگ کنیم."
-              time="۱۰:۱۸"
-              isAudio={false}
-            />
+            {MOCK_CHATS.map((chat) => (
+              <LiveChatCard
+                key={chat.id}
+                id={chat.id}
+                name={chat.name}
+                role={chat.role}
+                province={chat.province}
+                message={chat.message}
+                time={chat.time}
+                isAudio={chat.isAudio}
+              />
+            ))}
           </View>
         </View>
 
