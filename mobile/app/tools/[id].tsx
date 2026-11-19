@@ -4,7 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowRight, Wrench } from 'lucide-react-native';
 import VoltageDropScreen from '../../src/features/technical-tools/tools/electrical/voltage-drop/VoltageDropScreen';
+import TransformerScreen from '../../src/features/technical-tools/tools/electrical/transformer/TransformerScreen';
 import ClearancesScreen from '../../src/features/technical-tools/tools/mechanical/clearances/ClearancesScreen';
+import AcsrScreen from '../../src/features/technical-tools/tools/mechanical/acsr/AcsrScreen';
 import { ErrorBoundary } from '../../src/core/components/ErrorBoundary';
 import { useTheme } from '../../src/core/theme/ThemeContext';
 
@@ -53,8 +55,16 @@ export default function ToolRoute() {
       return <VoltageDropScreen />;
     }
 
+    if (id === 'electrical.transformer') {
+      return <TransformerScreen />;
+    }
+
     if (id === 'mechanical.clearances') {
       return <ClearancesScreen />;
+    }
+
+    if (id === 'mechanical.acsr') {
+      return <AcsrScreen />;
     }
 
     return <UnderDevelopmentScreen />;

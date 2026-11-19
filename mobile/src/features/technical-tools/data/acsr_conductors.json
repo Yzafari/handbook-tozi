@@ -1,0 +1,53 @@
+{
+  "title": "مشخصات هادی‌های ACSR",
+  "columns": [
+    { "key": "name_en", "label": "نام لاتین", "width": 100 },
+    { "key": "name_fa", "label": "نام فارسی", "width": 100 },
+    { "key": "nominal_size", "label": "سطح مقطع اسمی (mm²)", "width": 140 },
+    { "key": "actual_size", "label": "سطح مقطع واقعی (mm²)", "width": 140 },
+    { "key": "allowable_current", "label": "جریان مجاز (A)", "width": 110 },
+    { "key": "weight", "label": "وزن (kg/km)", "width": 110 }
+  ],
+  "rows": [
+    {
+      "name_en": "Fox",
+      "name_fa": "روباه",
+      "nominal_size": 35,
+      "actual_size": 35.2,
+      "allowable_current": 150,
+      "weight": 140
+    },
+    {
+      "name_en": "Mink",
+      "name_fa": "مینک",
+      "nominal_size": 70,
+      "actual_size": 71.6,
+      "allowable_current": 250,
+      "weight": 275
+    },
+    {
+      "name_en": "Dog",
+      "name_fa": "سگ",
+      "nominal_size": 120,
+      "actual_size": 118.5,
+      "allowable_current": 350,
+      "weight": 394
+    },
+    {
+      "name_en": "Hyena",
+      "name_fa": "کفتار",
+      "nominal_size": 120,
+      "actual_size": 118.5,
+      "allowable_current": 350,
+      "weight": 460
+    },
+    {
+      "name_en": "Lynx",
+      "name_fa": "سیاه‌گوش",
+      "nominal_size": 200,
+      "actual_size": 197.4,
+      "allowable_current": 500,
+      "weight": 760
+    }
+  ]
+}

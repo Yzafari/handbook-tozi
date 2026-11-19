@@ -1,0 +1,117 @@
+{
+  "title": "حفاظت ترانسفورماتور",
+  "columns": [
+    { "key": "capacity", "label": "ظرفیت (kVA)", "width": 100 },
+    { "key": "phase", "label": "فاز", "width": 90 },
+    { "key": "primary_current", "label": "جریان اولیه (A)", "width": 110 },
+    { "key": "secondary_current", "label": "جریان ثانویه (A)", "width": 120 },
+    { "key": "breaker_amperage", "label": "کلید حفاظتی (A)", "width": 120 },
+    { "key": "incoming_cable", "label": "کابل ورودی", "width": 150 }
+  ],
+  "rows": [
+    {
+      "capacity": 25,
+      "phase": "سه‌فاز",
+      "primary_current": 0.72,
+      "secondary_current": 36.1,
+      "breaker_amperage": 50,
+      "incoming_cable": "3×25+16"
+    },
+    {
+      "capacity": 50,
+      "phase": "سه‌فاز",
+      "primary_current": 1.44,
+      "secondary_current": 72.2,
+      "breaker_amperage": 100,
+      "incoming_cable": "3×35+16"
+    },
+    {
+      "capacity": 75,
+      "phase": "سه‌فاز",
+      "primary_current": 2.17,
+      "secondary_current": 108.3,
+      "breaker_amperage": 125,
+      "incoming_cable": "3×50+25"
+    },
+    {
+      "capacity": 100,
+      "phase": "سه‌فاز",
+      "primary_current": 2.89,
+      "secondary_current": 144.3,
+      "breaker_amperage": 160,
+      "incoming_cable": "3×70+35"
+    },
+    {
+      "capacity": 160,
+      "phase": "سه‌فاز",
+      "primary_current": 4.62,
+      "secondary_current": 231.0,
+      "breaker_amperage": 250,
+      "incoming_cable": "3×120+70"
+    },
+    {
+      "capacity": 200,
+      "phase": "سه‌فاز",
+      "primary_current": 5.77,
+      "secondary_current": 288.7,
+      "breaker_amperage": 315,
+      "incoming_cable": "3×150+95"
+    },
+    {
+      "capacity": 250,
+      "phase": "سه‌فاز",
+      "primary_current": 7.22,
+      "secondary_current": 360.8,
+      "breaker_amperage": 400,
+      "incoming_cable": "3×185+95"
+    },
+    {
+      "capacity": 315,
+      "phase": "سه‌فاز",
+      "primary_current": 9.09,
+      "secondary_current": 454.7,
+      "breaker_amperage": 500,
+      "incoming_cable": "3×240+120"
+    },
+    {
+      "capacity": 400,
+      "phase": "سه‌فاز",
+      "primary_current": 11.55,
+      "secondary_current": 577.4,
+      "breaker_amperage": 630,
+      "incoming_cable": "2×(3×150+95)"
+    },
+    {
+      "capacity": 500,
+      "phase": "سه‌فاز",
+      "primary_current": 14.43,
+      "secondary_current": 721.7,
+      "breaker_amperage": 800,
+      "incoming_cable": "2×(3×185+95)"
+    },
+    {
+      "capacity": 630,
+      "phase": "سه‌فاز",
+      "primary_current": 18.19,
+      "secondary_current": 909.3,
+      "breaker_amperage": 1000,
+      "incoming_cable": "2×(3×240+120)"
+    },
+    {
+      "capacity": 800,
+      "phase": "سه‌فاز",
+      "primary_current": 23.09,
+      "secondary_current": 1154.7,
+      "breaker_amperage": 1250,
+      "incoming_cable": "3×(3×185+95)"
+    },
+    {
+      "capacity": 1000,
+      "phase": "سه‌فاز",
+      "primary_current": 28.87,
+      "secondary_current": 1443.4,
+      "breaker_amperage": 1600,
+      "incoming_cable": "3×(3×240+120)"
+    }
+  ]
+}

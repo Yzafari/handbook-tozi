@@ -3,11 +3,40 @@ import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowRight } from 'lucide-react-native';
-import { StaticTableViewer, type StaticTableData } from '../../../components/StaticTableViewer';
+import {
+  StaticTableViewer,
+  type StaticTableData,
+  type StaticTableRow,
+} from '../../../components/StaticTableViewer';
 import { useTheme } from '../../../../../core/theme/ThemeContext';
 import clearancesData from '../../../data/clearances_table.json';
 
-const TABLE_DATA = clearancesData as StaticTableData;
+/**
+ * The clearances JSON stores a voltage matrix (voltage_levels + clearances).
+ * StaticTableViewer expects a column-driven shape, so the matrix is flattened
+ * into one column per voltage level here. The JSON file itself is unchanged.
+ */
+const TABLE_DATA: StaticTableData = {
+  title: clearancesData.title,
+  unit: clearancesData.unit,
+  columns: [
+    { key: 'condition', label: 'شرح', width: 160 },
+    ...clearancesData.voltage_levels.map((level) => ({
+      key: level,
+      label: level,
+      width: 80,
+    })),
+  ],
+  rows: clearancesData.rows.map((row) => {
+    const mapped: StaticTableRow = { condition: row.condition };
+
+    for (const level of clearancesData.voltage_levels) {
+      mapped[level] = row.clearances[level] ?? '—';
+    }
+
+    return mapped;
+  }),
+};
 
 export default function ClearancesScreen() {
   const router = useRouter();

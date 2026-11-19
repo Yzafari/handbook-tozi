@@ -101,7 +101,7 @@ export default function CalculationHistoryScreen() {
   }, [loadHistory]);
 
   const renderItem = ({ item }: { item: CalculationHistoryRecord }) => {
-    const toolName = TOOL_NAMES[item.tool_id] ?? item.tool_id;
+    const toolName = TOOL_NAMES[item.calculatorId] ?? item.calculatorId;
 
     return (
       <View className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
@@ -118,21 +118,9 @@ export default function CalculationHistoryScreen() {
             </Text>
           </View>
 
-          <View
-            className={
-              item.sync_status === 'pending'
-                ? 'rounded-full bg-amber-100 px-2.5 py-1 dark:bg-amber-900'
-                : 'rounded-full bg-green-100 px-2.5 py-1 dark:bg-green-900'
-            }
-          >
-            <Text
-              className={
-                item.sync_status === 'pending'
-                  ? 'text-[10px] font-bold text-amber-700 dark:text-amber-300'
-                  : 'text-[10px] font-bold text-green-700 dark:text-green-300'
-              }
-            >
-              {item.sync_status === 'pending' ? 'در انتظار همگام‌سازی' : 'همگام‌سازی شده'}
+          <View className="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-gray-800">
+            <Text className="text-[10px] font-bold text-gray-600 dark:text-gray-300">
+              v{item.formulaVersion}
             </Text>
           </View>
         </View>
@@ -140,7 +128,7 @@ export default function CalculationHistoryScreen() {
         <View className="mt-3 flex-row items-center gap-1.5">
           <Clock size={13} color={isDark ? '#9CA3AF' : '#6B7280'} />
           <Text className="text-[11px] text-gray-500 dark:text-gray-400">
-            {formatDate(item.created_at)}
+            {formatDate(item.createdAt)}
           </Text>
         </View>
 
@@ -185,7 +173,7 @@ export default function CalculationHistoryScreen() {
         <FlatList
           className="flex-1"
           data={history}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.calculationId}
           renderItem={renderItem}
           contentContainerClassName="gap-3 px-4 py-4 pb-10"
           refreshControl={

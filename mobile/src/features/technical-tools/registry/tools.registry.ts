@@ -1,4 +1,12 @@
-import { Anchor, FileText, ShieldAlert, Table, Zap, type LucideIcon } from 'lucide-react-native';
+import {
+  Activity,
+  Anchor,
+  FileText,
+  ShieldAlert,
+  Table,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react-native';
 
 export type ToolType = 'dynamic' | 'static';
 
@@ -16,6 +24,11 @@ export type ToolDefinition = {
   status: ToolStatus;
 };
 
+/**
+ * Invariant: every entry with `status: 'available'` must have a matching
+ * branch in `app/tools/[id].tsx`. Tools without a screen stay
+ * `under_development` so the card badge never promises a working screen.
+ */
 export const TOOLS: ToolDefinition[] = [
   {
     id: 'electrical.voltage-drop',
@@ -24,7 +37,7 @@ export const TOOLS: ToolDefinition[] = [
     type: 'dynamic',
     category: 'electrical',
     icon: Zap,
-    status: 'under_development',
+    status: 'available',
   },
   {
     id: 'electrical.short-circuit',
@@ -36,13 +49,22 @@ export const TOOLS: ToolDefinition[] = [
     status: 'under_development',
   },
   {
+    id: 'electrical.transformer',
+    name: 'حفاظت ترانسفورماتور',
+    description: 'جدول جریان‌ها، کلید حفاظتی و کابل ورودی ترانسفورماتورهای توزیع.',
+    type: 'static',
+    category: 'electrical',
+    icon: Zap,
+    status: 'available',
+  },
+  {
     id: 'mechanical.sag-tension',
     name: 'فلش و کشش هادی',
     description: 'محاسبه فلش و کشش مکانیکی هادی در خطوط انتقال هوایی.',
     type: 'static',
     category: 'mechanical',
     icon: Anchor,
-    status: 'available',
+    status: 'under_development',
   },
   {
     id: 'mechanical.clearances',
@@ -54,13 +76,22 @@ export const TOOLS: ToolDefinition[] = [
     status: 'available',
   },
   {
+    id: 'mechanical.acsr',
+    name: 'هادی‌های ACSR',
+    description: 'مشخصات فنی هادی‌های ACSR شامل سطح مقطع، جریان مجاز و وزن.',
+    type: 'static',
+    category: 'mechanical',
+    icon: Activity,
+    status: 'available',
+  },
+  {
     id: 'civil.pole-codes',
     name: 'کدهای پایه بتنی',
     description: 'مرجع کدها و مشخصات پایه‌های بتنی شبکه توزیع.',
     type: 'static',
     category: 'civil',
     icon: FileText,
-    status: 'available',
+    status: 'under_development',
   },
 ];
 
