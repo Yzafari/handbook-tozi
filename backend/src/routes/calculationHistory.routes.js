@@ -4,12 +4,12 @@ import {
   getAll,
   syncHistory,
 } from '../controllers/calculationHistory.controller.js';
-import { protect } from '../middlewares/auth.middleware.js';
+import { authenticate } from '../middlewares/auth.middleware.js';
 
 const router = express.Router();
 
-router.post('/sync', protect, syncHistory);
-router.post('/', protect, create);
-router.get('/', protect, getAll);
+router.post('/sync', authenticate, syncHistory);
+router.post('/', authenticate, create);
+router.get('/', authenticate, getAll);
 
 export default router;
