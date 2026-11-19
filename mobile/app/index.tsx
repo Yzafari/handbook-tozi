@@ -15,6 +15,10 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { useTheme } from '../src/core/theme/ThemeContext';
+import { SearchBar } from '../src/features/home/components/SearchBar';
+import { PunchBanner } from '../src/features/home/components/PunchBanner';
+import { LiveChatCard } from '../src/features/home/components/LiveChatCard';
+import { DeputyCards } from '../src/features/home/components/DeputyCards';
 
 type QuickAccessItem = {
   id: string;
@@ -130,19 +134,47 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <View className="mt-6 px-4">
-          <Text className="mb-3 text-base font-bold text-gray-900 dark:text-white">
-            ماژول‌های در حال توسعه
-          </Text>
+        <View className="mt-5 px-4">
+          <SearchBar />
+        </View>
 
-          <View className="rounded-2xl border border-dashed border-gray-300 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
-            <Text className="text-sm font-semibold text-gray-900 dark:text-white">
-              GIS، آمار، اسناد و سایر ماژول‌ها
+        <View className="mt-4 px-4">
+          <PunchBanner />
+        </View>
+
+        <View className="mt-6 px-4">
+          <View className="mb-3 flex-row items-center justify-between">
+            <Text className="text-base font-bold text-gray-900 dark:text-white">
+              گفت‌وگوی زنده همکاران
             </Text>
-            <Text className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-              این بخش‌ها در نسخه‌های بعدی فعال خواهند شد.
+            <Text className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+              مشاهده همه
             </Text>
           </View>
+
+          <View className="gap-3">
+            <LiveChatCard
+              name="مهندس یحیی ظفری"
+              role="کارشناس بهره‌برداری"
+              province="تهران"
+              message="پیام صوتی ۰:۴۲"
+              time="۱۰:۲۴"
+              isAudio
+            />
+
+            <LiveChatCard
+              name="علی احمدی"
+              role="تکنسین خط گرم"
+              province="اصفهان"
+              message="سلام همکار، برای پانچ امروز هماهنگ کنیم."
+              time="۱۰:۱۸"
+              isAudio={false}
+            />
+          </View>
+        </View>
+
+        <View className="mt-6 px-4">
+          <DeputyCards />
         </View>
       </ScrollView>
     </View>
