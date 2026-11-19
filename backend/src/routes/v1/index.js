@@ -5,6 +5,7 @@ import userRoutes from '../user.routes.js';
 import planRoutes from '../plan.routes.js';
 import subscriptionRoutes from '../subscription.routes.js';
 import paymentRoutes from '../payment.routes.js';
+import calculationHistoryRoutes from '../calculationHistory.routes.js';
 import { paymentLimiter } from '../../middlewares/rateLimit.middleware.js';
 import { discoverAndRegisterModules, mountRegisteredModules } from '../../core/module-registry.js';
 
@@ -15,6 +16,7 @@ router.use('/users', userRoutes);
 router.use('/plans', planRoutes);
 router.use('/subscriptions', subscriptionRoutes);
 router.use('/payment', paymentLimiter, paymentRoutes);
+router.use('/calculation-history', calculationHistoryRoutes);
 
 // Modules opt in through an enabled manifest and are mounted at their own basePath.
 await discoverAndRegisterModules();

@@ -1,10 +1,5 @@
-import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
-
-/**
- * Name of the SQLite database file used by the app.
- * Change this constant if the app opens a different database file.
- */
-const DATABASE_NAME = 'app.db';
+import { randomUUID } from 'expo-crypto';
+import { getDatabase } from '../../../core/database';
 
 const LOCAL_USER_ID = 'local_user';
 const PENDING_SYNC_STATUS = 'pending';
@@ -29,28 +24,11 @@ type RawHistoryRow = {
   sync_status: string;
 };
 
-let databasePromise: Promise<SQLiteDatabase> | null = null;
-
-function getDatabase(): Promise<SQLiteDatabase> {
-  if (!databasePromise) {
-    databasePromise = openDatabaseAsync(DATABASE_NAME).catch((error: unknown) => {
-      databasePromise = null;
-      throw error;
-    });
-  }
-
-  return databasePromise;
-}
-
-function generateUuid(): string {
-  const template = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
-
-  return template.replace(/[xy]/g, (char) => {
-    const random = (Math.random() * 16) | 0;
-    const value = char === 'x' ? random : (random & 0x3) | 0x8;
-    return value.toString(16);
-  });
-}
+/**
+ * The shared connection opened by `core/database`, so this module and
+ * `core/offline/repository` always read and write the same SQLite file.
+ */
+type Database = Awaited<ReturnType<typeof getDatabase>>;
 
 function parseJsonObject(value: string | null): Record<string, unknown> {
   if (!value) return {};
@@ -85,9 +63,9 @@ export async function saveCalculationHistory(
   inputs: Record<string, unknown>,
   outputs: Record<string, unknown>
 ): Promise<string> {
-  const database = await getDatabase();
+  const database: Database = await getDatabase();
 
-  const id = generateUuid();
+  const id = randomUUID();
   const createdAt = new Date().toISOString();
 
   await database.runAsync(
@@ -109,7 +87,7 @@ export async function saveCalculationHistory(
 }
 
 export async function getCalculationHistory(): Promise<CalculationHistoryRecord[]> {
-  const database = await getDatabase();
+  const database: Database = await getDatabase();
 
   const rows = await database.getAllAsync<RawHistoryRow>(
     `SELECT id, tool_id, user_id, inputs, outputs, created_at, sync_status
@@ -118,4 +96,23 @@ export async function getCalculationHistory(): Promise<CalculationHistoryRecord[
   );
 
   return rows.map(mapRow);
+}
+
+/**
+ * Fetches a single calculation history record by its id.
+ *
+ * @param id - The record's primary key.
+ * @returns The parsed record, or null when no row matches.
+ */
+export async function getHistoryById(id: string): Promise<CalculationHistoryRecord | null> {
+  const database: Database = await getDatabase();
+
+  const row = await database.getFirstAsync<RawHistoryRow>(
+    `SELECT id, tool_id, user_id, inputs, outputs, created_at, sync_status
+       FROM calculation_history
+      WHERE id = ?`,
+    [id]
+  );
+
+  return row ? mapRow(row) : null;
 }

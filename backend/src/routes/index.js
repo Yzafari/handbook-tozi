@@ -7,6 +7,7 @@ import planRoutes from './plan.routes.js';
 import subscriptionRoutes from './subscription.routes.js';
 import paymentRoutes from './payment.routes.js';
 import adminRoutes from './admin.routes.js';
+import calculationHistoryRoutes from './calculationHistory.routes.js';
 
 const router = Router();
 
@@ -19,5 +20,6 @@ router.use('/plans', planRoutes);
 router.use('/subscriptions', subscriptionRoutes);
 router.use('/payment', paymentLimiter, paymentRoutes);
 router.use('/admin', adminRoutes);
+router.use('/calculation-history', calculationHistoryRoutes);
 
 export default router;
