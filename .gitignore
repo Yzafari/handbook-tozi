@@ -1,22 +1,247 @@
-**/node_modules/
-**/.env
-**/.env.*
-!**/.env.example
-**/dist/
-**/build/
-**/coverage/
-**/uploads/
-.expo/
+# ==============================================================================
+# Root .gitignore - monorepo (Node.js / React / React Native + Expo / Prisma)
+# ==============================================================================
+# Patterns are relative to this file (the repo root) and apply recursively to
+# every workspace/package in the monorepo. A pattern with no internal slash
+# (e.g. "dist/", "*.log") already matches at ANY depth, so "**/" prefixes are
+# only used where a pattern is otherwise anchored to the root.
+#
+# Rule of thumb: ignore generated output, local state and secrets.
+#                commit source, config, lockfiles and Prisma migrations.
+# ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+# 1. Git internals
+# ------------------------------------------------------------------------------
+# Git never tracks its own object database. These entries are defensive: they
+# stop `git add -A` or third-party tooling from ever staging a nested .git dir.
+.git
+.git/
+**/.git
+**/.git/
+
+
+# ------------------------------------------------------------------------------
+# 2. OS + editor junk
+# ------------------------------------------------------------------------------
 .DS_Store
-*.log
-**/*.sqlite
-**/*.sqlite3
-**/*.db
-backend/backups/
-datacenter/backups/
-datacenter/data/
-mobile/.cache/
-mobile/documents/
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+ehthumbs.db
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*.swn
+*~
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+
+# ------------------------------------------------------------------------------
+# 3. Dependencies
+# ------------------------------------------------------------------------------
+node_modules
+node_modules/
+node_modules*
+jspm_packages/
+web_modules/
+.pnp
+.pnp.*
+.yarn/cache
+.yarn/unplugged
+.yarn/install-state.gz
+.yarn/build-state.yml
+.pnpm-store/
+.npm/
+
+
+# ------------------------------------------------------------------------------
+# 4. Legacy / backup copies
+# ------------------------------------------------------------------------------
+# Covers node_modules_old, node_modules.bak, src-old, config.old, etc.
+# NOTE: a bare "*old*" is intentionally NOT used - it would also match
+# legitimate paths such as "threshold/", "gold.png" or "folder.js".
+*_old
+*-old
+*.old
+*_old/
+*-old/
+*.old/
+*.bak
+*.backup
+*.orig
+*.rej
+
+
+# ------------------------------------------------------------------------------
+# 5. Environment files + secrets
+# ------------------------------------------------------------------------------
+.env
+.env.*
+.envrc
+!.env.example
+!**/.env.example
+!.env.sample
+!**/.env.sample
+!.env.template
+!**/.env.template
 *.pem
 *.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+!debug.keystore
+*.mobileprovision
+secrets/
+secrets.*
+credentials.json
+service-account*.json
+
+
+# ------------------------------------------------------------------------------
+# 6. Build output
+# ------------------------------------------------------------------------------
+dist
+dist/
+build
+build/
+out/
+output/
+.next/
+.nuxt/
+.svelte-kit/
+.output/
+.turbo/
+.parcel-cache/
+.cache/
+.vite/
+.react-email/
+storybook-static/
+*.tsbuildinfo
+
+
+# ------------------------------------------------------------------------------
+# 7. Logs
+# ------------------------------------------------------------------------------
+*.log
+logs
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.npm-debug.log*
+*.pid
+*.pid.lock
+*.seed
+
+
+# ------------------------------------------------------------------------------
+# 8. Node.js / tooling caches
+# ------------------------------------------------------------------------------
+coverage
+coverage/
+.nyc_output/
+.eslintcache
+.stylelintcache
+.node_repl_history
+.runtime.log
+*.heapsnapshot
+*.cpuprofile
+
+
+# ------------------------------------------------------------------------------
+# 9. React Native / Expo
+# ------------------------------------------------------------------------------
+.expo
+.expo/
+.expo-shared
+.expo-shared/
+expo-env.d.ts
+web-build/
+.metro-health-check*
+*.hprof
+.cxx/
+**/.cxx/
+DerivedData/
+*.xcuserstate
+**/xcuserdata/
+**/*.xcodeproj/xcuserdata/
+**/*.xcworkspace/xcuserdata/
+ios/Pods/
+**/ios/Pods/
+ios/build/
+**/ios/build/
+android/.gradle/
+**/android/.gradle/
+android/build/
+**/android/build/
+android/app/build/
+**/android/app/build/
+android/local.properties
+**/android/local.properties
+android/.cxx/
+**/android/.cxx/
+mobile/documents/
+**/mobile/documents/
+
+
+# ------------------------------------------------------------------------------
+# 10. Prisma
+# ------------------------------------------------------------------------------
+# The generated client lives in node_modules/.prisma (already ignored above).
+# Prisma migrations MUST be committed - they are deliberately not listed here.
+.prisma/
+**/.prisma/
+prisma/*.db
+prisma/*.db-journal
+**/prisma/*.db
+**/prisma/*.db-journal
+**/prisma/dev.db
+**/prisma/dev.db-journal
+
+
+# ------------------------------------------------------------------------------
+# 11. Databases / local data
+# ------------------------------------------------------------------------------
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite3-journal
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+datacenter/data/
+datacenter/backups/
+backend/backups/
+
+
+# ------------------------------------------------------------------------------
+# 12. Testing
+# ------------------------------------------------------------------------------
+playwright-report/
+**/playwright-report/
+test-results/
+**/test-results/
+blob-report/
+.cypress/videos/
+.cypress/screenshots/
+
+
+# ------------------------------------------------------------------------------
+# 13. Project-specific
+# ------------------------------------------------------------------------------
+uploads
+uploads/
+**/uploads/
 .aider*
