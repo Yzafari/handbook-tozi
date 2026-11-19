@@ -62,6 +62,7 @@ export default function HomeScreen() {
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel="تنظیمات"
+                onPress={() => router.push('/settings')}
                 className="h-10 w-10 items-center justify-center rounded-full bg-white/10"
               >
                 <Settings size={20} color="#FFFFFF" />
