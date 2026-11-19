@@ -53,6 +53,7 @@ export default function TechnicalToolsScreen() {
         activeOpacity={0.8}
         accessibilityRole="button"
         accessibilityLabel={item.name}
+        onPress={() => router.push(`/tools/${item.id}`)}
         className="flex-row items-center rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
       >
         <View className="h-12 w-12 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950">
