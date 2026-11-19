@@ -1,4 +1,4 @@
-import { Anchor, FileText, ShieldAlert, Zap, type LucideIcon } from 'lucide-react-native';
+import { Anchor, FileText, ShieldAlert, Table, Zap, type LucideIcon } from 'lucide-react-native';
 
 export type ToolType = 'dynamic' | 'static';
 
@@ -42,6 +42,15 @@ export const TOOLS: ToolDefinition[] = [
     type: 'static',
     category: 'mechanical',
     icon: Anchor,
+    status: 'available',
+  },
+  {
+    id: 'mechanical.clearances',
+    name: 'حریم هوایی هادی',
+    description: 'جدول فواصل هوایی مجاز هادی خطوط از تاسیسات بر اساس سطح ولتاژ.',
+    type: 'static',
+    category: 'mechanical',
+    icon: Table,
     status: 'available',
   },
   {

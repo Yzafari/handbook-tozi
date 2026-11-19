@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowRight, Wrench } from 'lucide-react-native';
 import VoltageDropScreen from '../../src/features/technical-tools/tools/electrical/voltage-drop/VoltageDropScreen';
+import ClearancesScreen from '../../src/features/technical-tools/tools/mechanical/clearances/ClearancesScreen';
 import { useTheme } from '../../src/core/theme/ThemeContext';
 
 export default function ToolRoute() {
@@ -13,6 +14,10 @@ export default function ToolRoute() {
 
   if (id === 'electrical.voltage-drop') {
     return <VoltageDropScreen />;
+  }
+
+  if (id === 'mechanical.clearances') {
+    return <ClearancesScreen />;
   }
 
   return (
