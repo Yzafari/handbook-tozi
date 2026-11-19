@@ -5,20 +5,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowRight, Wrench } from 'lucide-react-native';
 import VoltageDropScreen from '../../src/features/technical-tools/tools/electrical/voltage-drop/VoltageDropScreen';
 import ClearancesScreen from '../../src/features/technical-tools/tools/mechanical/clearances/ClearancesScreen';
+import { ErrorBoundary } from '../../src/core/components/ErrorBoundary';
 import { useTheme } from '../../src/core/theme/ThemeContext';
 
-export default function ToolRoute() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+function UnderDevelopmentScreen() {
   const router = useRouter();
   const { isDark } = useTheme();
-
-  if (id === 'electrical.voltage-drop') {
-    return <VoltageDropScreen />;
-  }
-
-  if (id === 'mechanical.clearances') {
-    return <ClearancesScreen />;
-  }
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-gray-50 dark:bg-gray-950">
@@ -51,4 +43,22 @@ export default function ToolRoute() {
       </View>
     </SafeAreaView>
   );
+}
+
+export default function ToolRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+
+  const renderTool = () => {
+    if (id === 'electrical.voltage-drop') {
+      return <VoltageDropScreen />;
+    }
+
+    if (id === 'mechanical.clearances') {
+      return <ClearancesScreen />;
+    }
+
+    return <UnderDevelopmentScreen />;
+  };
+
+  return <ErrorBoundary resetKey={id}>{renderTool()}</ErrorBoundary>;
 }
