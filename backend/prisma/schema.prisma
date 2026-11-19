@@ -58,6 +58,7 @@ model User {
   syncRecords   SyncRecord[]
   syncOperations SyncOperation[]
   ocrJobs       OcrJob[]
+  calculationHistory CalculationHistory[]
 }
 
 model Plan {
@@ -256,4 +257,18 @@ model OcrJob {
 
   @@index([userId, createdAt])
   @@index([status, availableAt, createdAt])
+}
+
+model CalculationHistory {
+  id          String   @id @default(uuid())
+  userId      String
+  toolId      String
+  toolVersion String
+  inputData   Json
+  outputData  Json
+  sources     Json?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
