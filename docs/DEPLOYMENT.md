@@ -1,6 +1,16 @@
 # راهنمای اجرای محیط توسعه
 
-## Backend
+## همهٔ سرویس‌ها با Docker
+
+```bash
+cp .env.example .env   # سپس JWT_ACCESS_SECRET، ENCRYPTION_KEY، PAYMENT_WEBHOOK_SECRET و DATACENTER_SIGNING_SECRET را پر کنید
+./scripts/setup.sh
+docker compose up -d
+```
+
+Compose از تصاویر `backend/Dockerfile` و `frontend/Dockerfile` ساخته می‌شود، قبل از بالا آمدن API مهاجرت‌های Prisma را اعمال می‌کند و فقط پس از healthy شدن دیتابیس و API سرویس بعدی را بالا می‌آورد. هیچ secretی در `docker-compose.yml` hardcode نشده است و اجرا بدون `.env` معتبر عمداً شکست می‌خورد.
+
+## Backend (اجرای مستقیم)
 1. وارد پوشه `backend` شوید.
 2. `npm ci` را اجرا کنید.
 3. `.env.example` را به `.env` کپی و مقادیر واقعی را وارد کنید.
@@ -13,8 +23,8 @@
 
 ## Mobile
 1. وارد پوشه `mobile` شوید.
-2. `.env.example` را به `.env` کپی و `EXPO_PUBLIC_API_BASE_URL` را تنظیم کنید.
-3. پس از تنظیم وابستگی‌ها، `npm install` را اجرا کنید.
+2. `.env.example` را به `.env` کپی و `EXPO_PUBLIC_API_URL` را تنظیم کنید؛ مقدار باید خود مسیر API را هم شامل شود (مثلاً `https://api.example.com/api/v1`). این متغیر در زمان build داخل باندل قرار می‌گیرد و برای بیلد release الزامی است.
+3. `npm ci` را اجرا کنید.
 4. به دلیل SQLCipher و دوربین، Expo Go کافی نیست؛ `npx expo prebuild` و سپس `npx expo run:android` را اجرا کنید. برای iOS، روی macOS از `npx expo run:ios` استفاده کنید.
 
 ## نکات Production
@@ -26,7 +36,7 @@
 - قبل از هر Migration نسخه پشتیبان و برنامه بازگشت داشته باشید.
 
 ## Frontend پنل مدیریت
-1. وارد پوشه `frantend` شوید.
+1. وارد پوشه `frontend` شوید.
 2. `npm ci` را اجرا کنید.
 3. `npm run build` برای ساخت نسخه انتشار یا `npm run dev` برای توسعه اجرا شود.
 4. Vite به‌صورت پیش‌فرض API را به `http://localhost:3000` پروکسی می‌کند؛ در صورت تغییر پورت بک‌اند، `vite.config.js` نیز باید هماهنگ شود.

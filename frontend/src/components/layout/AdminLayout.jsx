@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useToast } from '../../hooks/useToast.js';
-import { Button } from '../common/Button.jsx';
+import Button from '../ui/Button';
 import { ThemeToggle } from '../common/ThemeToggle.jsx';
 
 const ADMIN_NAVIGATION = [
