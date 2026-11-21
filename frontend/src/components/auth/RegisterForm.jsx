@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate } from 'react-router-dom';
@@ -43,7 +43,7 @@ function StrengthMeter({ password }) {
         ))}
       </div>
       <p className={`mt-1 text-xs ${active ? meta.text : 'text-gray-400'}`}>
-        {active ? `قدرت رمز عبور: ${meta.label}` : 'قدرت رمز عبور: -'}
+        {active ? `قدرت رمز عبور: ${meta.label}` : 'قدرت رمز عبور: —'}
       </p>
     </div>
   );
@@ -75,7 +75,6 @@ export default function RegisterForm() {
   });
 
   const password = watch('password') || '';
-  const strengthLevel = useMemo(() => getPasswordStrength(password), [password]);
 
   const onSubmit = async (values) => {
     setServerError('');
@@ -159,7 +158,6 @@ export default function RegisterForm() {
             onClick={() => setShowPassword((v) => !v)}
             className="absolute left-3 top-9 text-xs font-medium text-brand-600 hover:text-brand-700"
             aria-label={showPassword ? 'مخفی کردن رمز عبور' : 'نمایش رمز عبور'}
-            tabIndex={-1}
           >
             {showPassword ? 'مخفی' : 'نمایش'}
           </button>
@@ -177,13 +175,9 @@ export default function RegisterForm() {
         {...registerField('confirmPassword')}
       />
 
-      <Button
-        type="submit"
-        variant="primary"
-        className="w-full"
-        loading={isSubmitting}
-        disabled={strengthLevel < 2}
-      >
+      {/* Never disable submit on a weak password: the form must still show
+          validation messages instead of silently doing nothing. */}
+      <Button type="submit" variant="primary" className="w-full" loading={isSubmitting}>
         ثبت‌نام
       </Button>
 
