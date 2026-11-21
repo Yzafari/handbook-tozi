@@ -2,7 +2,7 @@ import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
-const SALT_ROUNDS = 12;
+export const SALT_ROUNDS = 12;
 const IV_LENGTH = 12;
 
 function getEncryptionKey() {

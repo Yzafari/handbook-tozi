@@ -40,6 +40,18 @@ export default defineConfig({
       }
     }
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split the large vendor libraries so the app shell is not a single
+        // ~1 MB chunk and long-term caching works per dependency group.
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          charts: ['recharts'],
+        },
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,
