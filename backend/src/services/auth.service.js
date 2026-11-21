@@ -14,9 +14,15 @@ import { createNotification } from './notification.service.js';
 import { deleteCachedJson } from './cache/redis-cache.js';
 import { AUDIT_ACTIONS, AUTH } from '../config/constants.js';
 
-// Dummy bcrypt hash for timing protection when user does not exist.
-const DUMMY_HASH =
-  '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+// Dummy hash for timing protection when the account does not exist.
+// It is produced once with the same cost factor as real passwords, so a login
+// attempt for an unknown email costs the same as a wrong password. A hardcoded
+// hash with a different cost would leak timing information about valid emails.
+let dummyHashPromise = null;
+function getDummyHash() {
+  dummyHashPromise ??= hashPassword('timing-protection-dummy-password');
+  return dummyHashPromise;
+}
 
 /**
  * Convert Prisma user into a safe public user object.
@@ -108,7 +114,7 @@ export async function login({ email, password }) {
   // Timing protection: perform a dummy hash comparison for unknown accounts.
   const isValid = user
     ? await comparePassword(password, user.password)
-    : await comparePassword(password, DUMMY_HASH);
+    : await comparePassword(password, await getDummyHash());
 
   if (!user || !isValid || user.isActive === false) {
     if (user && user.isActive !== false) {

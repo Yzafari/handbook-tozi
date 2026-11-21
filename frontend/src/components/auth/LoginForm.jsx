@@ -93,7 +93,6 @@ export default function LoginForm() {
           onClick={() => setShowPassword((v) => !v)}
           className="absolute left-3 top-9 text-xs font-medium text-brand-600 hover:text-brand-700"
           aria-label={showPassword ? 'پنهان کردن رمز عبور' : 'نمایش رمز عبور'}
-          tabIndex={-1}
         >
           {showPassword ? 'پنهان' : 'نمایش'}
         </button>

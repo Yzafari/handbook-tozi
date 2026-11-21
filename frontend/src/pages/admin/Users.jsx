@@ -17,7 +17,7 @@ import { useAuth } from '../../hooks/useAuth.js';
 import { useDebounce } from '../../hooks/useDebounce.js';
 import { useToast } from '../../hooks/useToast.js';
 import { Modal } from '../../components/common/Modal.jsx';
-import { Button } from '../../components/common/Button.jsx';
+import Button from '../../components/ui/Button';
 
 const PAGE_SIZE = 10;
 

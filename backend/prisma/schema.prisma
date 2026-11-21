@@ -262,6 +262,7 @@ model OcrJob {
 model CalculationHistory {
   id          String   @id @default(uuid())
   userId      String
+  clientId    String?
   toolId      String
   toolVersion String
   inputData   Json
@@ -270,5 +271,6 @@ model CalculationHistory {
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, clientId])
   @@index([userId, createdAt])
 }

@@ -6,7 +6,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { X, AlertTriangle } from 'lucide-react';
-import { Button } from './Button.jsx';
+import Button from '../ui/Button';
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',

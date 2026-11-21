@@ -1,13 +1,13 @@
-import { PrismaClient } from '@prisma/client';
-
-// If the project already exposes a shared Prisma client, import that instead
-// of instantiating a new one here (multiple clients exhaust the connection pool).
-const prisma = new PrismaClient();
+import prisma from '../config/database.js';
 
 const USER_SELECT = { select: { name: true, email: true } };
 
 /**
  * Persists a single calculation history record for the given user.
+ *
+ * `clientId` is the client-generated id of the record. It makes the write
+ * idempotent: re-sending the same offline record (for example after a flaky
+ * network) returns the existing row instead of duplicating it.
  *
  * @param {string} userId - Owner of the record (from the authenticated request).
  * @param {object} data - Validated payload.
@@ -16,21 +16,30 @@ const USER_SELECT = { select: { name: true, email: true } };
  * @param {object} data.inputData
  * @param {object} data.outputData
  * @param {object|null} [data.sources]
- * @returns {Promise<object>} The created record.
+ * @param {string|null} [data.clientId]
+ * @returns {Promise<object>} The created (or previously stored) record.
  */
 export async function createHistory(userId, data) {
-  const { toolId, toolVersion, inputData, outputData, sources } = data;
+  const { toolId, toolVersion, inputData, outputData, sources, clientId } = data;
 
-  return prisma.calculationHistory.create({
-    data: {
-      userId,
-      toolId,
-      toolVersion,
-      inputData,
-      outputData,
-      sources: sources === undefined || sources === null ? null : sources,
-    },
-  });
+  const payload = {
+    userId,
+    toolId,
+    toolVersion,
+    inputData,
+    outputData,
+    sources: sources === undefined || sources === null ? null : sources,
+    clientId: clientId || null,
+  };
+
+  if (payload.clientId) {
+    const existing = await prisma.calculationHistory.findUnique({
+      where: { userId_clientId: { userId, clientId: payload.clientId } },
+    });
+    if (existing) return existing;
+  }
+
+  return prisma.calculationHistory.create({ data: payload });
 }
 
 /**
@@ -40,8 +49,10 @@ export async function createHistory(userId, data) {
  * offline records keep their original calculation time. When it is omitted,
  * the database default (`now()`) applies.
  *
- * `skipDuplicates` only has an effect if a unique constraint exists on the
- * model; CalculationHistory currently has none, so it is a no-op today.
+ * `skipDuplicates` is only meaningful together with the `(userId, clientId)`
+ * unique constraint: records already synced in an earlier batch are skipped.
+ * Rows without a `clientId` are always inserted (Postgres allows several
+ * NULLs in a unique index).
  *
  * @param {string} userId - Owner of every record in the batch.
  * @param {object[]} items - Validated payloads.
@@ -55,6 +66,7 @@ export async function createHistoryItems(userId, items) {
     inputData: item.inputData,
     outputData: item.outputData,
     sources: item.sources === undefined || item.sources === null ? null : item.sources,
+    clientId: item.clientId || null,
     ...(item.createdAt ? { createdAt: new Date(item.createdAt) } : {}),
   }));
 
@@ -68,20 +80,23 @@ export async function createHistoryItems(userId, items) {
  * Returns calculation history records, newest first.
  *
  * @param {string} userId - The authenticated user's id.
- * @param {boolean} [isAdmin=false] - When true, returns records for all users.
- * @returns {Promise<object[]>}
+ * @param {object} [options]
+ * @param {boolean} [options.isAdmin=false] - When true, returns records for all users.
+ * @param {number} [options.limit=50] - Page size (already clamped by the controller).
+ * @param {string|null} [options.cursor=null] - Id of the last record of the previous page.
+ * @returns {Promise<object[]>} One page of records, plus one extra row used to
+ *   compute `hasMore`.
  */
-export async function getUserHistory(userId, isAdmin = false) {
-  if (isAdmin) {
-    return prisma.calculationHistory.findMany({
-      include: { user: USER_SELECT },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
+export async function getUserHistory(userId, { isAdmin = false, limit = 50, cursor = null } = {}) {
+  const where = isAdmin ? {} : { userId };
+  if (cursor) where.id = { lt: cursor };
 
   return prisma.calculationHistory.findMany({
-    where: { userId },
+    where,
     include: { user: USER_SELECT },
     orderBy: { createdAt: 'desc' },
+    // One extra row tells the caller whether another page exists without a
+    // second COUNT query.
+    take: limit + 1,
   });
 }
