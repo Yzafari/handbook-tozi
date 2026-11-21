@@ -5,7 +5,7 @@ import { useDebounce } from '../../hooks/useDebounce.js';
 import { useToast } from '../../hooks/useToast.js';
 import { getErrorMessage } from '../../utils/api.js';
 import { formatJalaliDate, toPersianDigits } from '../../utils/format.js';
-import { Button } from '../../components/common/Button.jsx';
+import Button from '../../components/ui/Button';
 import { Modal } from '../../components/common/Modal.jsx';
 
 const PAGE_SIZE = 20;
