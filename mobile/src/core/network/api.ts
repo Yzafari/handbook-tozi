@@ -4,28 +4,45 @@ import Constants from 'expo-constants';
 import { readRefreshToken, saveRefreshToken, clearRefreshToken, clearCachedUser } from '../security/secureTokens';
 
 const API_PORT = 3000;
-const FALLBACK_API_BASE_URL = 'http://192.168.1.9:3000/api/v1';
+
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
 
 /**
  * Resolves the API base URL.
  *
- * - In development, derives the host from the Expo dev server (`hostUri`)
- *   so a physical device on the same LAN can reach the backend.
- * - In production (standalone APK) or when `hostUri` is unavailable,
- *   falls back to a hardcoded LAN address.
+ * - `EXPO_PUBLIC_API_URL` is the single source of truth; Expo inlines it at
+ *   build time, so release builds never ship a developer's LAN address.
+ * - In development the Expo dev-server host is used as a fallback so a
+ *   physical device on the same Wi-Fi can reach the local backend.
+ * - In a release build without the variable we fail loudly instead of
+ *   silently calling an unreachable IP.
  */
 export function getApiBaseUrl(): string {
+  const configured = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (configured) {
+    return trimTrailingSlash(configured);
+  }
+
   if (__DEV__) {
     const hostUri = Constants.expoConfig?.hostUri;
     const host = hostUri?.split(':')[0];
-    if (host) {
-      return `http://${host}:${API_PORT}/api/v1`;
-    }
+    return `http://${host ?? 'localhost'}:${API_PORT}/api/v1`;
   }
-  return FALLBACK_API_BASE_URL;
+
+  throw new Error(
+    'EXPO_PUBLIC_API_URL is not set. Configure it before building a release (see mobile/.env.example).'
+  );
 }
 
-export const api = axios.create({ baseURL: getApiBaseUrl(), timeout: 20000, headers: { Accept: 'application/json' } });
+// Resolved lazily so a missing EXPO_PUBLIC_API_URL surfaces as a single clear
+// request error instead of crashing the bundle while it is being imported.
+let resolvedBaseUrl: string | null = null;
+const resolveBaseUrl = (): string => {
+  if (!resolvedBaseUrl) resolvedBaseUrl = getApiBaseUrl();
+  return resolvedBaseUrl;
+};
+
+export const api = axios.create({ timeout: 20000, headers: { Accept: 'application/json' } });
 let accessToken: string | null = null;
 let refreshPromise: Promise<any> | null = null;
 let authExpiredHandler: (() => void) | null = null;
@@ -66,6 +83,7 @@ export async function restoreSession(): Promise<any | null> {
 }
 
 api.interceptors.request.use(async (request: InternalAxiosRequestConfig) => {
+  if (!request.baseURL) request.baseURL = resolveBaseUrl();
   if (accessToken) request.headers.Authorization = `Bearer ${accessToken}`;
   return request;
 });
