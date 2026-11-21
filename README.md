@@ -4,17 +4,34 @@
 
 ## مسیرهای اصلی
 - `backend/`: API قدیمی `/api`، API نسخه‌دار `/api/v1`، رجیستری ماژول‌ها، سرویس‌ها، Workerها و Prisma.
-- `frantend/`: پنل مدیریت React موجود.
+- `frontend/`: پنل مدیریت React موجود.
 - `mobile/`: اپلیکیشن Expo، SQLite/SQLCipher، SecureStore، جستجو، دانلود آفلاین سند، OCR آفلاین‌صف‌شده و دفترچه فنی.
 - `datacenter/`: سرویس مستقل نگهداری فایل با دسترسی داخلی و پشتیبانی Range.
 - `docker-compose.datacenter.yml`: محیط توسعهٔ OpenSearch، Redis، ذخیره‌سازی و Worker پردازش اسناد.
 - `docs/`: معماری، قرارداد API، راهنمای توسعه ماژول، استقرار و ممیزی.
 
 ## شروع
-راهنمای نصب و اجرا در `docs/DEPLOYMENT.md` و راهنمای موبایل در `mobile/README.md` است. فایل‌های `.env.example` را کپی و مقادیر واقعی را وارد کنید. هیچ فایل `.env` واقعی یا کلید محرمانه‌ای در این بسته قرار ندارد.
+سریع‌ترین مسیر اجرای کل سامانه:
+
+```bash
+cp .env.example .env    # مقادیر JWT_ACCESS_SECRET و ENCRYPTION_KEY و ... را پر کنید
+./scripts/setup.sh
+docker compose up -d
+```
+
+اجرای بدون Docker و جزئیات هر بخش در `docs/DEPLOYMENT.md` و راهنمای موبایل در `mobile/README.md` است. فایل‌های `.env.example` را کپی و مقادیر واقعی را وارد کنید. هیچ فایل `.env` واقعی یا کلید محرمانه‌ای در این بسته قرار ندارد.
+
+## تست و CI
+
+```bash
+./scripts/test.sh          # همهٔ تست‌ها: backend + frontend + mobile
+./scripts/test.sh backend  # فقط یک بخش
+```
+
+GitHub Actions در `.github/workflows/ci.yml` همین بررسی‌ها (check، تست بک‌اند، تست و بیلد فرانت‌اند، typecheck و تست موبایل، اعتبارسنجی Compose و ساخت ایمیج‌ها) را روی هر push و Pull Request اجرا می‌کند.
 
 ## دیتابیس
-مسیر مرجع Prisma بک‌اند `backend/prisma` است. پوشهٔ قدیمی `prisma/` در ریشهٔ پروژه از نسخهٔ اولیه باقی مانده و نباید برای Migration عملیاتی استفاده شود. قبل از اجرای Migration روی هر دیتابیس واقعی، Backup بگیرید و ابتدا روی Clone دیتابیس آزمایش کنید.
+تنها مسیر مرجع Prisma، `backend/prisma` است؛ پوشهٔ قدیمی `prisma/` ریشه و درخت FastAPI/`alembic` حذف شده‌اند تا دو منبع حقیقت وجود نداشته باشد. قبل از اجرای Migration روی هر دیتابیس واقعی، Backup بگیرید و ابتدا روی Clone دیتابیس آزمایش کنید.
 
 ## اصول توسعه
 ماژول‌های بک‌اند با manifest دارای `enabled: true` به‌صورت خودکار کشف و با ترتیب وابستگی‌ها mount می‌شوند. افزودن ماژول به تغییر فایل مرکزی Router نیاز ندارد. قرارداد کامل در `docs/MODULE_DEVELOPMENT.md` است.

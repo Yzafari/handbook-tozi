@@ -28,13 +28,16 @@ const TABLE_DATA: StaticTableData = {
     })),
   ],
   rows: clearancesData.rows.map((row) => {
-    const mapped: StaticTableRow = { condition: row.condition };
+    const mapped: Record<string, string> = { condition: row.condition };
 
     for (const level of clearancesData.voltage_levels) {
-      mapped[level] = row.clearances[level] ?? '—';
+      // `level` is a plain string here, while the JSON is typed with the exact
+      // voltage keys; narrow it once instead of loosening the whole table type.
+      const key = level as keyof typeof row.clearances;
+      mapped[level] = String(row.clearances[key] ?? '—');
     }
 
-    return mapped;
+    return mapped as StaticTableRow;
   }),
 };
 

@@ -8,11 +8,12 @@
 
 ## Configuration
 1. Copy `.env.example` to `.env`.
-2. Set `EXPO_PUBLIC_API_BASE_URL` to the backend origin (not including `/api/v1`).
-   - Android emulator: `http://10.0.2.2:3000`
-   - iOS simulator: `http://localhost:3000`
+2. Set `EXPO_PUBLIC_API_URL` to the full API base URL, including `/api/v1`.
+   - Android emulator: `http://10.0.2.2:3000/api/v1`
+   - iOS simulator: `http://localhost:3000/api/v1`
    - Physical phone: use the development computer's LAN IP; both devices must be on the same network.
-3. Install dependencies with `npm install`.
+   - Release builds: a public HTTPS URL. The value is inlined at build time and a release build without it fails with a clear error instead of calling a LAN address.
+3. Install dependencies with `npm ci`.
 
 ## Native development build
 The app enables SQLCipher through the `expo-sqlite` config plugin and uses the native camera and persistent file storage. These features require a native development build; Expo Go is not a valid test target.

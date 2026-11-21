@@ -4,15 +4,16 @@ const requiredString = (message) =>
   z.string({ error: message }).trim().min(1, message);
 
 const emailSchema = z
-  .string({ error: 'ایمیل الزامی است.' })
+  .string({ error: 'ایمیل الزامی است' })
   .trim()
-  .min(1, 'ایمیل الزامی است.')
-  .email('فرمت ایمیل معتبر نیست.')
+  .min(1, 'ایمیل الزامی است')
+  .email('ایمیل معتبر نیست')
   .max(254, 'ایمیل بیش از حد طولانی است.')
   .transform((value) => value.toLowerCase());
 
 const passwordSchema = z
-  .string({ error: 'رمز عبور الزامی است.' })
+  .string({ error: 'رمز عبور الزامی است' })
+  .min(1, 'رمز عبور الزامی است')
   .min(8, 'رمز عبور باید حداقل ۸ کاراکتر باشد.')
   .regex(/[a-z]/, 'رمز عبور باید حداقل یک حرف کوچک انگلیسی داشته باشد.')
   .regex(/[A-Z]/, 'رمز عبور باید حداقل یک حرف بزرگ انگلیسی داشته باشد.')
@@ -29,18 +30,28 @@ const phoneSchema = z
 export const loginSchema = z.object({
   email: emailSchema,
   password: z
-    .string({ error: 'رمز عبور الزامی است.' })
-    .min(1, 'رمز عبور الزامی است.')
+    .string({ error: 'رمز عبور الزامی است' })
+    .min(1, 'رمز عبور الزامی است')
 });
 
-export const registerSchema = z.object({
-  email: emailSchema,
-  password: passwordSchema,
-  fullName: requiredString('نام و نام خانوادگی الزامی است.')
-    .min(2, 'نام باید حداقل ۲ کاراکتر باشد.')
-    .max(100, 'نام بیش از حد طولانی است.'),
-  phone: phoneSchema
-});
+export const registerSchema = z
+  .object({
+    email: emailSchema,
+    password: passwordSchema,
+    fullName: requiredString('نام و نام خانوادگی الزامی است')
+      .min(2, 'نام باید حداقل ۲ کاراکتر باشد.')
+      .max(100, 'نام بیش از حد طولانی است.'),
+    phone: phoneSchema,
+    // The confirmation field is part of the form and must be validated here,
+    // otherwise a mismatched confirmation is silently accepted.
+    confirmPassword: z
+      .string({ error: 'تکرار رمز عبور الزامی است' })
+      .min(1, 'تکرار رمز عبور الزامی است')
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'تکرار رمز عبور با رمز عبور مطابقت ندارد',
+    path: ['confirmPassword']
+  });
 
 export const profileSchema = z.object({
   fullName: requiredString('نام و نام خانوادگی الزامی است.')
