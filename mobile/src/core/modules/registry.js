@@ -27,10 +27,10 @@ export function createModuleRegistry(definitions) {
 
 export const MODULE_REGISTRY = createModuleRegistry([
   { id: 'bill-payment', label: 'پرداخت قبض', icon: '💳', status: 'coming-soon' },
-  { id: 'bill-calculator', label: 'محاسبه قبض', icon: '🧾', status: 'coming-soon' },
+  { id: 'bill-calculator', label: 'دستورالعمل ها و استانداردها', icon: '🧾', status: 'coming-soon' },
   { id: 'engineering', label: 'محاسبات فنی', icon: '⚡', status: 'coming-soon' },
   { id: 'safety', label: 'پیام‌ها و اصول ایمنی', icon: '🦺', status: 'coming-soon' },
-  { id: 'forms', label: 'فرم‌ها و چک‌لیست‌ها', icon: '📝', status: 'coming-soon' },
+  { id: 'forms', label: 'پروژه های من', icon: '📝', status: 'coming-soon' },
   { id: 'notebook', label: 'دفترچه فنی', icon: '📒', status: 'active', route: '/notebook' },
 ]);
 
