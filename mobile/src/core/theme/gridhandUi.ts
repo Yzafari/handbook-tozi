@@ -22,18 +22,21 @@ export const getUi = (isDark: boolean): Ui => (isDark ? dark : light);
 /** هدر و نمایشگر ماشین‌حساب در هر دو تم تیره‌اند */
 export const NAVY: [string, string] = ['#06152B', '#0B2F63'];
 
-type PhotoKey = 'hero' | 'engineering' | 'safety' | 'taghiz' | 'notebook' | 'ghabz' | 'login' | 'project' | 'hero2' |;
+type PhotoKey = 'hero' | 'engineering' | 'safety' | 'taghiz' | 'notebook' | 'ghabz' | 'login' | 'project' | 'hero2' | 'icon';
 
 /**
  * بعد از ساخت هر عکس، null را با require جایگزین کنید. مثال:
  * hero: require('../../../assets/photos/hero.jpg'),
  */
 export const photos: Record<PhotoKey, ImageSourcePropType | null> = {
-  hero: require,
-  engineering: require,
-  safety: require,
-  forms: require,
-  notebook: require,
-  ghabz: require,
-  login: require
+  hero: require('../../../assets/photos/hero.jpg'),
+  engineering: require('../../../assets/photos/engineering.jpg'),
+  safety: require('../../../assets/photos/safety.jpg'),
+  project: require('../../../assets/photos/project.jpg'),
+  notebook: require('../../../assets/photos/notebook.jpg'),
+  ghabz: require('../../../assets/photos/ghabz.jpg'),
+  taghiz: require('../../../assets/photos/taghiz.jpg'),
+  login: require('../../../assets/photos/login.jpg'),
+  hero2: require('../../../assets/photos/hero2.jpg'),
+  icon: require('../../../assets/photos/icon.png'),
 };
