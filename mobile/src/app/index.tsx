@@ -23,7 +23,7 @@ const META: Record<string, Meta> = {
   'bill-calculator': { icon: Receipt, tint: '#18D68C', grad: ['#0B5C4A', '#14A877'], photo: 'taghiz' },
   engineering: { icon: Calculator, tint: '#FFC21A', grad: ['#16345C', '#2A5A9A'], photo: 'engineering' },
   safety: { icon: ShieldCheck, tint: '#18D68C', grad: ['#0B5C4A', '#14A877'], photo: 'safety' },
-  forms: { icon: ClipboardList, tint: '#B79CFF', grad: ['#3B2A7A', '#6A4FD0'], photo: 'forms' },
+  project: { icon: ClipboardList, tint: '#B79CFF', grad: ['#3B2A7A', '#6A4FD0'], photo: 'project' },
   notebook: { icon: BookOpen, tint: '#3B9EFF', grad: ['#0B3D91', '#1D6FE0'], photo: 'notebook' },
 };
 const FALLBACK: Meta = { icon: Zap, tint: '#FFC21A', grad: ['#16345C', '#2A5A9A'], photo: null };
