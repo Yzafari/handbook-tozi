@@ -141,6 +141,10 @@ export async function expireDueSubscriptions() {
  * per expiry cycle. The hourly cron used to re-send it on every run, so a user
  * inside the reminder window received a notification and an email every hour.
  *
+ * The flag is set after the notification is created, so a failed attempt is
+ * retried on the next run rather than lost; a concurrent run may in rare cases
+ * create a second notification, but never a second email.
+ *
  * Dependencies are injectable so the logic can be tested without a database.
  */
 export async function sendExpiryReminders({
@@ -165,20 +169,30 @@ export async function sendExpiryReminders({
   let processed = 0;
 
   for (const sub of subs) {
-    // Claim first: two API instances (or two overlapping runs) must not both
-    // notify the same subscription. `count === 0` means someone else won.
-    const claim = await db.subscription.updateMany({
-      where: { id: sub.id, expiryReminderSentAt: null },
-      data: { expiryReminderSentAt: now },
-    });
-    if (claim.count === 0) continue;
-
-    await notify({
+    // The flag is written only once the notification really exists, so a
+    // transient failure (DB hiccup, temporary notification error) is retried by
+    // the next hourly run instead of burning the reminder for this cycle.
+    const notification = await notify({
       userId: sub.userId,
       type: 'SUBSCRIPTION_EXPIRING',
       title: 'یادآوری انقضا',
       body: `اشتراک ${sub.plan?.name ?? ''} شما تا ${reminderDays} روز دیگر به پایان می‌رسد.`,
     });
+    if (!notification) continue;
+
+    // Conditional write: if another run already recorded the reminder, keep the
+    // existing timestamp and skip the email so the user is not mailed twice.
+    const claim = await db.subscription.updateMany({
+      where: { id: sub.id, expiryReminderSentAt: null },
+      data: { expiryReminderSentAt: now },
+    });
+    if (claim.count === 0) {
+      logger.warn('Expiry reminder already recorded by another run', {
+        subscriptionId: sub.id,
+        userId: sub.userId,
+      });
+      continue;
+    }
 
     if (sub.user?.email) {
       try {

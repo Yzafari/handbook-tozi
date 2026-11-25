@@ -117,19 +117,51 @@ test('the reminder query only targets unreminded subscriptions inside the remind
   assert.deepEqual(query.include, { user: true, plan: true });
 });
 
-test('a reminder already claimed by another worker is not sent again', async () => {
+test('a transient notification failure leaves the flag unset so the next run retries', async () => {
+  const db = createDb({ subscriptions: [subscription()] });
+  const sent = recorder();
+  let attempts = 0;
+  const flakyNotify = async payload => {
+    attempts += 1;
+    return attempts === 1 ? null : sent.notify(payload); // first run fails, second succeeds
+  };
+
+  const first = await sendExpiryReminders({ now: NOW, db, notify: flakyNotify, sendEmail: sent.sendEmail });
+
+  assert.equal(first, 0);
+  assert.equal(db.subs[0].expiryReminderSentAt, null, 'a failed attempt must not burn the cycle');
+  assert.ok(
+    !db.calls.some(call => call.method === 'updateMany'),
+    'the flag is only written once the notification exists'
+  );
+  assert.deepEqual(sent.emails, []);
+
+  const second = await sendExpiryReminders({
+    now: new Date(NOW.getTime() + 60 * 60 * 1000),
+    db,
+    notify: flakyNotify,
+    sendEmail: sent.sendEmail,
+  });
+
+  assert.equal(second, 1);
+  assert.equal(sent.notifications.length, 1);
+  assert.deepEqual(sent.emails, ['first@example.com']);
+  assert.equal(db.subs[0].expiryReminderSentAt.getTime(), NOW.getTime() + 60 * 60 * 1000);
+});
+
+test('a reminder recorded by another run is not overwritten and sends no email', async () => {
   const db = createDb({ subscriptions: [subscription()] });
   const sent = recorder();
   db.subscription.updateMany = async args => {
     db.calls.push({ model: 'subscription', method: 'updateMany', args });
-    return { count: 0 }; // another instance claimed it first
+    return { count: 0 }; // another instance recorded it first
   };
 
   const processed = await sendExpiryReminders({ now: NOW, db, notify: sent.notify, sendEmail: sent.sendEmail });
 
   assert.equal(processed, 0);
-  assert.equal(sent.notifications.length, 0);
-  assert.deepEqual(sent.emails, []);
+  assert.deepEqual(sent.emails, [], 'no duplicate email');
+  assert.equal(db.subs[0].expiryReminderSentAt, null, 'the existing timestamp is left untouched');
 });
 
 test('a failing reminder email neither aborts the batch nor causes a resend', async () => {
