@@ -29,7 +29,25 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      # ✅ فقط یک بار setup-android، با نسخهٔ ثابت cmdline-tools
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 11076708
+
+      # ✅ قبول خودکار لایسنس‌ها بدون نیاز به ورودی تعاملی
+      - name: Accept Android SDK licenses
+        run: |
+          mkdir -p $ANDROID_SDK_ROOT/licenses
+          echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_SDK_ROOT/licenses/android-sdk-license
+          echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_SDK_ROOT/licenses/android-sdk-preview-license
+          echo -e "\nd56f5187479451eabf01fb78af6dfcb131a6481e" > $ANDROID_SDK_ROOT/licenses/intel-android-extra-license
+          echo -e "\nd975f751698a77b662f1254ddbeed3901e976f5a" > $ANDROID_SDK_ROOT/licenses/google-gdk-license
+          echo -e "\ne9acab5b5fbb560a72797e954da520dc8bd8b551" > $ANDROID_SDK_ROOT/licenses/android-googletv-license
+          echo -e "\n33b6a2b64607f11b759f320ef9dff4ae5c47d97a" > $ANDROID_SDK_ROOT/licenses/android-google-xr-license
+          echo -e "\n494517e45ac67e6a790707ba1ecb87d8180e0455" > $ANDROID_SDK_ROOT/licenses/microxr-sysimage-license
+          echo -e "\n3304a8b4d451a0f15d8a352d1c8dbc85cf6f89bd" > $ANDROID_SDK_ROOT/licenses/android-sdk-arm-dbt-license
+          yes | sdkmanager --licenses || true
 
       - name: Install dependencies
         run: npm ci
@@ -38,16 +56,12 @@ jobs:
         run: npm run typecheck
 
       - name: Create .env
-        # Expo inlines EXPO_PUBLIC_* at build time; a release build without a
-        # public API URL is not shippable, so the job fails early.
         run: |
           if [ -z "${{ secrets.EXPO_PUBLIC_API_URL }}" ]; then
             echo "::error::Repository secret EXPO_PUBLIC_API_URL is not set."
             exit 1
           fi
           printf 'EXPO_PUBLIC_API_URL=%s\n' "${{ secrets.EXPO_PUBLIC_API_URL }}" > .env
-
-      - uses: actions/setup-android@v3
 
       - name: Prebuild Android project
         env:
@@ -64,8 +78,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: handbook-distribution-apk-${{ github.run_number }}
-          # Gradle names the file app-release(-unsigned).apk depending on whether
-          # a signing config is present, so upload whatever was produced.
           path: mobile/android/app/build/outputs/apk/release/*.apk
           retention-days: 30
           if-no-files-found: error
