@@ -72,6 +72,13 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+      # A missing asset or bad import only surfaces at bundle time (Expo resolves
+      # require() in the bundler, not in tsc), so build the web bundle here too.
+      - name: Bundle web (expo export)
+        run: npx expo export --platform web
+        env:
+          CI: 'true'
+
   docker:
     name: Docker images build
     runs-on: ubuntu-latest
