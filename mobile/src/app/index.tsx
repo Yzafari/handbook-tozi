@@ -52,7 +52,7 @@ export default function HomeScreen() {
   const ui = getUi(isDark);
   const s = useMemo(() => createStyles(ui, rowDirection, textAlign), [ui, rowDirection, textAlign]);
 
-  const moduleKeys: Record<string, Parameters<typeof t>[0]> = { 'bill-payment': 'ghabz', 'bill-calculator': 'taghiz', engineering: 'engineering', safety: 'safety', project: 'poroject', notebook: 'notebookModule' };
+  const moduleKeys: Record<string, Parameters<typeof t>[0]> = { 'bill-payment': 'ghabz', 'bill-calculator': 'taghiz', engineering: 'engineering', safety: 'safety', project: 'project', notebook: 'notebookModule' };
   const moduleLabel = (item: Readonly<AppModule>): string => {
     const key = moduleKeys[item.id];
     if (!key) return item.label;

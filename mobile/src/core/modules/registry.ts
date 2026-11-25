@@ -1,12 +1,10 @@
 /**
  * Single source of truth for the mobile module registry.
  *
- * This file replaces the previous trio of `registry.js`, `registry.d.ts` and
- * `registry.ts`, which all resolved to the same module specifier and shadowed
- * each other (Metro prefers `.js` over `.ts`, so this file was dead code at
- * runtime). `registry.js` and `registry.d.ts` must be deleted.
- *
- * Import it extensionless: `import { getHomeModules } from '../core/modules/registry';`
+ * Do not add `registry.js` or `registry.d.ts` next to this file: Metro prefers
+ * `.js` over `.ts` for the same specifier, so those files silently shadowed this
+ * one at runtime. Import it extensionless:
+ * `import { getHomeModules } from '../core/modules/registry';`
  */
 
 /* -------------------------------------------------------------------------- */
@@ -70,10 +68,10 @@ export function createModuleRegistry(definitions: AppModule[]): readonly Readonl
 
 export const MODULE_REGISTRY: readonly Readonly<AppModule>[] = createModuleRegistry([
   { id: 'bill-payment', label: 'پرداخت قبض', icon: '💳', status: 'coming-soon' },
-  { id: 'bill-calculator', label: 'استاندارد ها و دستورالعملها', icon: '🧾', status: 'coming-soon' },
-  { id: 'engineering', label: 'آموزش و محاسبات فنی', icon: '⚡', status: 'coming-soon' },
+  { id: 'bill-calculator', label: 'استانداردها و دستورالعمل‌ها', icon: '🧾', status: 'coming-soon' },
+  { id: 'engineering', label: 'محاسبات فنی', icon: '⚡', status: 'coming-soon' },
   { id: 'safety', label: 'پیام‌ها و اصول ایمنی', icon: '🦺', status: 'coming-soon' },
-  { id: 'project', label: 'استاندارد ها و دستورالعملها', icon: '📝', status: 'coming-soon' },
+  { id: 'project', label: 'پروژه های من', icon: '📝', status: 'coming-soon' },
   { id: 'notebook', label: 'دفترچه فنی', icon: '📒', status: 'active', route: '/notebook' },
 ]);
 

@@ -22,7 +22,7 @@ export const getUi = (isDark: boolean): Ui => (isDark ? dark : light);
 /** هدر و نمایشگر ماشین‌حساب در هر دو تم تیره‌اند */
 export const NAVY: [string, string] = ['#06152B', '#0B2F63'];
 
-type PhotoKey = 'hero' | 'engineering' | 'safety' | 'taghiz' | 'notebook' | 'ghabz' | 'login' | 'project' | 'hero2' | 'icon';
+type PhotoKey = 'hero' | 'engineering' | 'safety' | 'taghiz' | 'notebook' | 'ghabz' | 'login' | 'project' | 'hero2';
 
 /**
  * بعد از ساخت هر عکس، null را با require جایگزین کنید. مثال:
@@ -38,5 +38,4 @@ export const photos: Record<PhotoKey, ImageSourcePropType | null> = {
   taghiz: require('../../../assets/photos/taghiz.jpg'),
   login: require('../../../assets/photos/login.jpg'),
   hero2: require('../../../assets/photos/hero2.jpg'),
-  icon: require('../../../assets/photos/icon.png'),
 };
