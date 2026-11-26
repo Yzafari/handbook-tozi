@@ -29,13 +29,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # ✅ فقط یک بار setup-android، با نسخهٔ ثابت cmdline-tools
+      # ✅ فقط یک بار setup-android با نسخهٔ ثابت
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
           cmdline-tools-version: 11076708
 
-      # ✅ قبول خودکار لایسنس‌ها بدون نیاز به ورودی تعاملی
+      # ✅ قبول خودکار لایسنس‌ها (بدون نیاز به ورودی تعاملی)
       - name: Accept Android SDK licenses
         run: |
           mkdir -p $ANDROID_SDK_ROOT/licenses
