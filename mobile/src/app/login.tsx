@@ -33,10 +33,12 @@ export default function LoginScreen() {
       {photos.login ? <ImageBackground source={photos.login} resizeMode="cover" style={StyleSheet.absoluteFill} /> : null}
       <LinearGradient colors={['rgba(6,21,43,0.35)', 'rgba(6,21,43,0.92)']} locations={[0.1, 0.65]} style={StyleSheet.absoluteFill} />
       <SafeAreaView style={styles.safe}>
-        {/* Android draws edge to edge on SDK 54, so the window no longer resizes
-            for the keyboard. Padding on both platforms plus a scroll container
-            keeps the fields and the guest button reachable while typing. */}
-        <KeyboardAvoidingView style={styles.container} behavior="padding">
+                {/* Android keyboard avoidance is handled by the root navigator.
+            This local wrapper handles the iOS keyboard and keeps the form scrollable. */}
+                <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
           <ScrollView
             style={styles.scroll}
             contentContainerStyle={styles.scrollContent}
