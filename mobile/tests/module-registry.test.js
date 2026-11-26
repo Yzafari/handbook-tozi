@@ -8,7 +8,7 @@ test('home module registry contains the agreed modules without standalone search
   const labels = getHomeModules().map(module => module.label);
   assert.ok(labels.includes('پرداخت قبض'));
   assert.ok(labels.includes('استانداردها و دستورالعمل‌ها'));
-  assert.ok(labels.includes('محاسبات فنی'));
+  assert.ok(labels.includes('محاسبات و ابزارهای فنی'));
   assert.ok(labels.includes('پیام‌ها و اصول ایمنی'));
   assert.ok(labels.includes('پروژه های من'));
   assert.ok(!labels.includes('جستجو'));
