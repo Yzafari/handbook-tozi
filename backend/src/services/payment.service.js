@@ -65,50 +65,144 @@ export function toPublicPayment(payment) {
  * @param {import('express').Request} [req]
  * @returns {Promise<{ payment: object, paymentUrl: string, authority: string, reused?: boolean }>}
  */
+
 export async function createPaymentRequest(userId, payload = {}, req) {
   const planId = String(payload.planId ?? '').trim();
-  const idempotencyKey = String(payload.idempotencyKey ?? req?.headers?.['idempotency-key'] ?? '').trim() || null;
+  const idempotencyKey = String(
+    payload.idempotencyKey ?? req?.headers?.['idempotency-key'] ?? ''
+  ).trim() || null;
+
   if (!planId || planId.length > 128) {
     throw new AppError(400, 'VALIDATION_ERROR', 'شناسه پلن نامعتبر است');
   }
-  if (idempotencyKey && (idempotencyKey.length < 8 || idempotencyKey.length > 128)) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'کلید تکرارنشدن درخواست پرداخت معتبر نیست');
+
+  if (
+    idempotencyKey &&
+    (idempotencyKey.length < 8 || idempotencyKey.length > 128)
+  ) {
+    throw new AppError(
+      400,
+      'VALIDATION_ERROR',
+      'کلید تکرارنشدن درخواست پرداخت معتبر نیست'
+    );
   }
 
-  if (idempotencyKey) {
-    const previous = await prisma.payment.findUnique({ where: { idempotencyKey }, include: { plan: true } });
-    if (previous) {
-      if (previous.userId !== userId) throw new AppError(409, 'IDEMPOTENCY_KEY_REUSED', 'این کلید قبلاً برای حساب دیگری استفاده شده است');
-      if (previous.status === 'PENDING' && previous.authority && Number.isSafeInteger(previous.amountToman) && previous.amountToman > 0) {
-        return { payment: toPublicPayment(previous), paymentUrl: getPaymentUrl(previous.authority), authority: previous.authority, reused: true };
-      }
-      if (previous.status === 'PENDING') throw new AppError(409, 'PAYMENT_REQUEST_IN_PROGRESS', 'درخواست پرداخت با همین شناسه در حال پردازش است؛ چند لحظه دیگر دوباره تلاش کنید');
-      throw new AppError(409, 'IDEMPOTENCY_KEY_ALREADY_USED', 'این کلید قبلاً برای یک درخواست پرداخت نهایی استفاده شده است؛ برای تلاش تازه، درخواست جدید ایجاد کنید');
-    }
-  }
+  const plan = await prisma.plan.findUnique({
+    where: { id: planId },
+  });
 
-  const plan = await prisma.plan.findUnique({ where: { id: planId } });
   if (!plan || plan.isActive === false) {
     throw new AppError(404, 'NOT_FOUND', 'پلن یافت نشد');
   }
 
-  const amountToman = Math.round(Number(plan.price));
-  if (!Number.isFinite(amountToman) || amountToman <= 0) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'قیمت پلن نامعتبر است');
+  const minimumAmountToman = Number(plan.price);
+
+  if (
+    !Number.isSafeInteger(minimumAmountToman) ||
+    minimumAmountToman <= 0
+  ) {
+    throw new AppError(
+      400,
+      'VALIDATION_ERROR',
+      'قیمت پلن نامعتبر است'
+    );
   }
 
-  const requestedDays = Number(payload.durationDays);
-  const durationDays =
-    Number.isInteger(requestedDays) && requestedDays > 0
-      ? requestedDays
-      : Number(plan.durationDays) > 0
-        ? Number(plan.durationDays)
-        : DEFAULT_DURATION_DAYS;
+  const amountToman =
+    payload.amountToman === undefined
+      ? minimumAmountToman
+      : payload.amountToman;
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
+  if (
+    !Number.isSafeInteger(amountToman) ||
+    amountToman <= 0
+  ) {
+    throw new AppError(
+      400,
+      'VALIDATION_ERROR',
+      'مبلغ پرداخت باید یک عدد صحیح و مثبت باشد'
+    );
+  }
+
+  if (amountToman < minimumAmountToman) {
+    throw new AppError(
+      400,
+      'MINIMUM_AMOUNT_NOT_MET',
+      `حداقل مبلغ پرداخت برای این پلن ${minimumAmountToman} تومان است`
+    );
+  }
+
+  const durationDays = Number(plan.durationDays);
+
+  if (!Number.isInteger(durationDays) || durationDays <= 0) {
+    throw new AppError(
+      400,
+      'VALIDATION_ERROR',
+      'مدت پلن نامعتبر است'
+    );
+  }
+
+  if (idempotencyKey) {
+    const previous = await prisma.payment.findFirst({
+      where: {
+        userId,
+        idempotencyKey,
+      },
+      include: { plan: true },
+    });
+
+    if (previous) {
+      if (
+        previous.planId !== plan.id ||
+        previous.amountToman !== amountToman
+      ) {
+        throw new AppError(
+          409,
+          'IDEMPOTENCY_KEY_REUSED',
+          'این کلید قبلاً برای پلن یا مبلغ دیگری استفاده شده است'
+        );
+      }
+
+      if (
+        previous.status === 'PENDING' &&
+        previous.authority &&
+        Number.isSafeInteger(previous.amountToman) &&
+        previous.amountToman > 0
+      ) {
+        return {
+          payment: toPublicPayment(previous),
+          paymentUrl: getPaymentUrl(previous.authority),
+          authority: previous.authority,
+          reused: true,
+        };
+      }
+
+      if (previous.status === 'PENDING') {
+        throw new AppError(
+          409,
+          'PAYMENT_REQUEST_IN_PROGRESS',
+          'درخواست پرداخت با همین شناسه در حال پردازش است؛ چند لحظه دیگر دوباره تلاش کنید'
+        );
+      }
+
+      throw new AppError(
+        409,
+        'IDEMPOTENCY_KEY_ALREADY_USED',
+        'این کلید قبلاً برای یک درخواست پرداخت نهایی استفاده شده است؛ برای تلاش تازه، درخواست جدید ایجاد کنید'
+      );
+    }
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
+  }
 
   let payment;
+
   try {
     payment = await prisma.payment.create({
       data: {
@@ -123,17 +217,60 @@ export async function createPaymentRequest(userId, payload = {}, req) {
     });
   } catch (error) {
     if (idempotencyKey && isIdempotencyConflict(error)) {
-      const previous = await prisma.payment.findUnique({ where: { idempotencyKey }, include: { plan: true } });
-      if (previous?.userId === userId && previous.status === 'PENDING' && previous.authority) {
-        return { payment: toPublicPayment(previous), paymentUrl: getPaymentUrl(previous.authority), authority: previous.authority, reused: true };
+      const previous = await prisma.payment.findFirst({
+        where: {
+          userId,
+          idempotencyKey,
+        },
+        include: { plan: true },
+      });
+
+      if (
+        previous &&
+        (
+          previous.planId !== plan.id ||
+          previous.amountToman !== amountToman
+        )
+      ) {
+        throw new AppError(
+          409,
+          'IDEMPOTENCY_KEY_REUSED',
+          'این کلید قبلاً برای پلن یا مبلغ دیگری استفاده شده است'
+        );
       }
-      if (previous && previous.userId !== userId) throw new AppError(409, 'IDEMPOTENCY_KEY_REUSED', 'این کلید قبلاً برای حساب دیگری استفاده شده است');
-      throw new AppError(409, 'PAYMENT_REQUEST_IN_PROGRESS', 'درخواست پرداخت با همین شناسه در حال پردازش است؛ چند لحظه دیگر دوباره تلاش کنید');
+
+      if (
+        previous?.status === 'PENDING' &&
+        previous.authority
+      ) {
+        return {
+          payment: toPublicPayment(previous),
+          paymentUrl: getPaymentUrl(previous.authority),
+          authority: previous.authority,
+          reused: true,
+        };
+      }
+
+      if (previous && previous.userId !== userId) {
+        throw new AppError(
+          409,
+          'IDEMPOTENCY_KEY_REUSED',
+          'این کلید قبلاً برای حساب دیگری استفاده شده است'
+        );
+      }
+
+      throw new AppError(
+        409,
+        'PAYMENT_REQUEST_IN_PROGRESS',
+        'درخواست پرداخت با همین شناسه در حال پردازش است؛ چند لحظه دیگر دوباره تلاش کنید'
+      );
     }
+
     throw error;
   }
 
   let gateway;
+
   try {
     gateway = await requestPayment({
       amount: toRial(amountToman),
@@ -143,9 +280,15 @@ export async function createPaymentRequest(userId, payload = {}, req) {
     });
   } catch (error) {
     await prisma.payment.updateMany({
-      where: { id: payment.id, status: 'PENDING' },
-      data: { status: 'FAILED' },
+      where: {
+        id: payment.id,
+        status: 'PENDING',
+      },
+      data: {
+        status: 'FAILED',
+      },
     });
+
     throw error;
   }
 
@@ -164,7 +307,10 @@ export async function createPaymentRequest(userId, payload = {}, req) {
       req,
     });
   } catch (error) {
-    logger.error('Failed to log PAYMENT_CREATED event:', error?.message);
+    logger.error(
+      'Failed to log PAYMENT_CREATED event:',
+      error?.message
+    );
   }
 
   return {
@@ -173,6 +319,7 @@ export async function createPaymentRequest(userId, payload = {}, req) {
     authority: gateway.authority,
   };
 }
+
 
 async function failPayment(payment, reason, req) {
   const result = await prisma.payment.updateMany({
