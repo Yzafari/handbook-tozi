@@ -8,6 +8,18 @@ const API_PORT = 3000;
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
 
 /**
+ * Accepts both `https://host/api/v1` and a bare origin such as
+ * `http://1.2.3.4:3000`. The API lives under `/api/v1`, and forgetting the
+ * prefix is the most common misconfiguration, so add it only when the value
+ * has no path of its own.
+ */
+function normalizeBaseUrl(value: string): string {
+  const trimmed = trimTrailingSlash(value.trim());
+  const withoutScheme = trimmed.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+  return withoutScheme.includes('/') ? trimmed : `${trimmed}/api/v1`;
+}
+
+/**
  * Resolves the API base URL.
  *
  * - `EXPO_PUBLIC_API_URL` is the single source of truth; Expo inlines it at
@@ -20,7 +32,7 @@ const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
 export function getApiBaseUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL?.trim();
   if (configured) {
-    return trimTrailingSlash(configured);
+    return normalizeBaseUrl(configured);
   }
 
   if (__DEV__) {

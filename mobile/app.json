@@ -4,6 +4,7 @@
     "slug": "handbook-distribution",
     "scheme": "handbookdistribution",
     "version": "1.0.0",
+    "icon": "./assets/photos/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -36,6 +37,12 @@
       "typedRoutes": true
     },
     "android": {
+      "icon": "./assets/photos/icon.png",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/photos/icon2.png",
+        "backgroundColor": "#000000"
+      },
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.CAMERA"
       ],

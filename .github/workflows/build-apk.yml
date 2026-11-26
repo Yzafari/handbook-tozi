@@ -60,7 +60,7 @@ jobs:
         run: npm run typecheck
 
       - name: Create .env
-        # Expo inlines EXPO_PUBLIC_* at build time. Without the secret the
+        # Expo inlines EXPO_PUBLIC_* at bundle time. Without the secret the
         # bundle still compiles (offline screens keep working) and API calls
         # fail at runtime with a clear message, so keep building the artifact
         # and surface the misconfiguration as a warning instead of a failure.
@@ -69,14 +69,23 @@ jobs:
             echo "::warning::Repository secret EXPO_PUBLIC_API_URL is not set; the APK is built without an API endpoint."
             exit 0
           fi
+          case "${{ secrets.EXPO_PUBLIC_API_URL }}" in
+            *example.com*) echo "::warning::EXPO_PUBLIC_API_URL still points at the example.com placeholder." ;;
+          esac
           printf 'EXPO_PUBLIC_API_URL=%s\n' "${{ secrets.EXPO_PUBLIC_API_URL }}" > .env
 
+      # The value is passed through the environment, not only .env: `expo
+      # prebuild` uses it to decide whether cleartext HTTP is allowed and
+      # `expo export:embed` (run by Gradle) inlines it into the release bundle.
       - name: Prebuild Android project
         env:
           CI: 'true'
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
         run: npx expo prebuild --platform android --clean
 
       - name: Build release APK
+        env:
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
         run: cd android && chmod +x gradlew && ./gradlew assembleRelease --no-daemon
 
       - name: List generated APKs

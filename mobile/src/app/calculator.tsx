@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { I18nManager, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -23,6 +23,14 @@ const ROWS = [
   ['(', '0', '.', ')'],
 ];
 const OPERATORS = ['÷', '×', '−', '+', '%'];
+
+/**
+ * A calculator grid is always read left-to-right, so it must not follow the
+ * device layout direction. On an RTL device React Native already lays out a
+ * `row` from right to left, so reversing the keys cancels that mirroring and
+ * keeps the digits where a calculator user expects them.
+ */
+const visualOrder = (keys: string[]) => (I18nManager.isRTL ? [...keys].reverse() : keys);
 
 const toFa = (v: string) =>
   v.replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]).replace(/\./g, '٫');
@@ -307,7 +315,7 @@ export default function CalculatorScreen() {
                 ['^', '*', '/', '−'],
               ].map((row, index) => (
                 <View key={index} style={s.functionRow}>
-                  {row.map(key => (
+                  {visualOrder(row).map(key => (
                     <Pressable key={key} style={s.functionKey} onPress={() => {
                       setExpression(value => (value + key).slice(0, 120));
                       setResult(null);
@@ -322,7 +330,7 @@ export default function CalculatorScreen() {
             <View style={s.keypad}>
               {ROWS.map((row, index) => (
                 <View key={index} style={s.keyRow}>
-                  {row.map(key => {
+                  {visualOrder(row).map(key => {
                     const op = OPERATORS.includes(key);
                     const isClear = key === 'C';
                     const isDel = key === '⌫';
@@ -380,7 +388,7 @@ export default function CalculatorScreen() {
             <TextInput value={complexA} onChangeText={setComplexA} style={s.input} autoCapitalize="none" />
             <Text style={s.fieldLabel}>عملگر</Text>
             <View style={s.operationRow}>
-              {['+', '−', '×', '÷'].map(op => (
+              {visualOrder(['+', '−', '×', '÷']).map(op => (
                 <Pressable key={op} onPress={() => setComplexOperation(op)} style={[s.operationButton, complexOperation === op && s.operationSelected]}>
                   <Text style={s.operationText}>{op}</Text>
                 </Pressable>
@@ -502,7 +510,7 @@ const createStyles = (ui: Ui, row: 'row' | 'row-reverse', align: 'left' | 'right
   functionRow: { flexDirection: 'row', gap: 7 },
   functionKey: { flex: 1, minHeight: 40, borderRadius: 11, backgroundColor: ui.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   functionText: { color: ui.blue, fontSize: 12, fontWeight: '700' },
-  keypad: { marginTop: 12, gap: 9, direction: 'ltr' },
+  keypad: { marginTop: 12, gap: 9 },
   keyRow: { flexDirection: 'row', gap: 9 },
   key: { flex: 1, height: 58, borderRadius: 17, backgroundColor: ui.surface, borderWidth: 1, borderColor: ui.border, alignItems: 'center', justifyContent: 'center' },
   keyOp: { backgroundColor: ui.accentSoft, borderColor: 'transparent' },
