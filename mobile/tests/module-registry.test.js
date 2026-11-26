@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-// Node strips the TypeScript types on import (Node >= 22.18). The registry only
-// exists as `registry.ts`; a sibling `.js` would shadow it inside Metro.
+// Requires Node.js >= 22.18.0 for built-in TypeScript type stripping.
+// The registry only exists as `registry.ts`; a sibling `.js` would shadow it inside Metro.
 import { createModuleRegistry, getHomeModules, MODULE_REGISTRY } from '../src/core/modules/registry.ts';
 
 test('home module registry contains the agreed modules without standalone search or camera cards', () => {
