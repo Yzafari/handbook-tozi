@@ -51,7 +51,7 @@ services:
       postgres:
         condition: service_healthy
     # Apply pending migrations before the API starts serving traffic.
-    command: sh -c "npx prisma migrate deploy && node src/server.js"
+    command: sh -c "npx --no-install prisma migrate deploy && node src/server.js"
 
   frontend:
     build: ./frontend

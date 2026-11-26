@@ -3,6 +3,9 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
+# `prisma` is a runtime dependency: the image has to run `prisma generate` and
+# `prisma migrate deploy` with no network access, so the CLI must be installed
+# here and not left to an on-demand `npx` download.
 RUN npm ci --omit=dev
 
 FROM node:22-alpine AS runner
@@ -19,7 +22,7 @@ COPY prisma ./prisma
 COPY src ./src
 COPY scripts ./scripts
 
-RUN npx prisma generate && chown -R app:app /app
+RUN npx --no-install prisma generate && chown -R app:app /app
 USER app
 
 EXPOSE 3000

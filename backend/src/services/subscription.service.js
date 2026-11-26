@@ -4,6 +4,7 @@ import { logEvent } from './audit.service.js';
 import { createNotification } from './notification.service.js';
 import { sendExpiryReminderEmail, sendExpiredEmail } from './email.service.js';
 import { AUDIT_ACTIONS, PAYMENT } from '../config/constants.js';
+import logger from '../utils/logger.util.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_DURATION_DAYS = 30;
@@ -75,7 +76,12 @@ export async function activateSubscription(tx, { userId, planId, durationDays })
     const base = currentSub.endDate && currentSub.endDate > now ? currentSub.endDate : now;
     return client.subscription.update({
       where: { id: currentSub.id },
-      data: { planId, endDate: new Date(base.getTime() + days * DAY_MS) },
+      data: {
+        planId,
+        endDate: new Date(base.getTime() + days * DAY_MS),
+        // A renewed subscription starts a new expiry cycle and may remind again.
+        expiryReminderSentAt: null,
+      },
     });
   }
 
@@ -130,17 +136,32 @@ export async function expireDueSubscriptions() {
   return processed;
 }
 
-export async function sendExpiryReminders() {
-  const now = new Date();
-  
+/**
+ * Sends the "subscription expires soon" reminder at most once per subscription
+ * per expiry cycle. The hourly cron used to re-send it on every run, so a user
+ * inside the reminder window received a notification and an email every hour.
+ *
+ * The flag is set after the notification is created, so a failed attempt is
+ * retried on the next run rather than lost; a concurrent run may in rare cases
+ * create a second notification, but never a second email.
+ *
+ * Dependencies are injectable so the logic can be tested without a database.
+ */
+export async function sendExpiryReminders({
+  now = new Date(),
+  db = prisma,
+  notify = createNotification,
+  sendEmail = sendExpiryReminderEmail,
+} = {}) {
   // خواندن از فایل تنظیمات با یک مقدار پشتیبان برای امنیت بیشتر
-  const reminderDays = PAYMENT?.REMINDER_DAYS_BEFORE ?? 3; 
+  const reminderDays = PAYMENT?.REMINDER_DAYS_BEFORE ?? 3;
   const threshold = new Date(now.getTime() + (reminderDays * DAY_MS));
 
-  const subs = await prisma.subscription.findMany({
+  const subs = await db.subscription.findMany({
     where: {
       status: 'ACTIVE',
       endDate: { gt: now, lte: threshold },
+      expiryReminderSentAt: null,
     },
     include: { user: true, plan: true },
   });
@@ -148,15 +169,43 @@ export async function sendExpiryReminders() {
   let processed = 0;
 
   for (const sub of subs) {
-    await createNotification({
+    // The flag is written only once the notification really exists, so a
+    // transient failure (DB hiccup, temporary notification error) is retried by
+    // the next hourly run instead of burning the reminder for this cycle.
+    const notification = await notify({
       userId: sub.userId,
       type: 'SUBSCRIPTION_EXPIRING',
       title: 'یادآوری انقضا',
       body: `اشتراک ${sub.plan?.name ?? ''} شما تا ${reminderDays} روز دیگر به پایان می‌رسد.`,
     });
+    if (!notification) continue;
+
+    // Conditional write: if another run already recorded the reminder, keep the
+    // existing timestamp and skip the email so the user is not mailed twice.
+    const claim = await db.subscription.updateMany({
+      where: { id: sub.id, expiryReminderSentAt: null },
+      data: { expiryReminderSentAt: now },
+    });
+    if (claim.count === 0) {
+      logger.warn('Expiry reminder already recorded by another run', {
+        subscriptionId: sub.id,
+        userId: sub.userId,
+      });
+      continue;
+    }
 
     if (sub.user?.email) {
-      await sendExpiryReminderEmail(sub.user);
+      try {
+        await sendEmail(sub.user);
+      } catch (error) {
+        // The reminder is claimed, so it will not be re-sent; never let a bad
+        // mailbox abort the reminders of the remaining subscriptions.
+        logger.error('Send expiry reminder email failed', {
+          subscriptionId: sub.id,
+          userId: sub.userId,
+          error: error.message,
+        });
+      }
     }
 
     processed += 1;
