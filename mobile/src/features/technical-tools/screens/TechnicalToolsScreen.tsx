@@ -130,29 +130,28 @@ export default function TechnicalToolsScreen() {
           returnKeyType="search"
         />
       </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerClassName="gap-2 px-4 py-3"
-      >
+      
+      <View className="flex-row gap-2 px-4 py-3">
         {CATEGORY_FILTERS.map((filter) => {
           const isActive = filter.key === activeCategory;
 
           return (
             <TouchableOpacity
               key={filter.key}
-              activeOpacity={0.7}
+              activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel={filter.label}
+              accessibilityState={{ selected: isActive }}
               onPress={() => setActiveCategory(filter.key)}
               className={
                 isActive
-                  ? 'rounded-full bg-blue-600 px-4 py-2'
-                  : 'rounded-full border border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-gray-900'
+                  ? 'min-h-12 flex-1 items-center justify-center rounded-xl border border-blue-600 bg-blue-600 px-1'
+                  : 'min-h-12 flex-1 items-center justify-center rounded-xl border border-gray-200 bg-white/80 px-1 dark:border-gray-700 dark:bg-gray-900/80'
               }
             >
               <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
                 className={
                   isActive
                     ? 'text-xs font-bold text-white'
@@ -164,8 +163,8 @@ export default function TechnicalToolsScreen() {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
-
+      </View>
+      
       <FlatList
         className="flex-1"
         data={filteredTools}
