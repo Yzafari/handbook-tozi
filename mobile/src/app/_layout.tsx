@@ -1,5 +1,11 @@
 import React from 'react';
-import { I18nManager, StyleSheet, View } from 'react-native';
+import {
+  I18nManager,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider } from '../core/auth/AuthContext';
@@ -34,12 +40,17 @@ function AppNavigator() {
   return (
     <View style={styles.root}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: isDark ? '#121212' : '#F5F7F8' },
-        }}
-      />
+            <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'android' ? 'padding' : undefined}
+      >
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: isDark ? '#121212' : '#F5F7F8' },
+          }}
+        />
+      </KeyboardAvoidingView>
     </View>
   );
 }
