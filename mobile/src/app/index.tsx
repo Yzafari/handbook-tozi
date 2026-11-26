@@ -79,6 +79,11 @@ export default function HomeScreen() {
               <Text style={s.brandName}>{t('appName')}</Text>
             </View>
             <View style={s.heroActions}>
+              {!user && (
+                <Pressable style={s.authBtn} onPress={() => router.push('/login')} accessibilityRole="button" accessibilityLabel={t('authAction')} hitSlop={6}>
+                  <Text style={s.authBtnText}>{t('authAction')}</Text>
+                </Pressable>
+              )}
               <Pressable style={s.heroIconBtn} onPress={() => router.push('/settings')} accessibilityRole="button" accessibilityLabel={t('settings')} hitSlop={6}>
                 <Settings size={18} color="#FFFFFF" />
               </Pressable>
@@ -187,6 +192,8 @@ const createStyles = (ui: Ui, row: 'row' | 'row-reverse', align: 'left' | 'right
   heroRow: { flexDirection: row, alignItems: 'center', justifyContent: 'space-between' },
   heroActions: { flexDirection: row, alignItems: 'center', gap: 10 },
   heroIconBtn: { width: 38, height: 38, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
+  authBtn: { borderRadius: 13, backgroundColor: '#FFC21A', paddingHorizontal: 12, paddingVertical: 10 },
+  authBtnText: { color: '#04121F', fontSize: 11.5, fontWeight: '800' },
   brandRow: { flexDirection: row, alignItems: 'center', gap: 10 },
   brandChip: { width: 34, height: 34, borderRadius: 11, backgroundColor: '#FFC21A', alignItems: 'center', justifyContent: 'center' },
   brandName: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },

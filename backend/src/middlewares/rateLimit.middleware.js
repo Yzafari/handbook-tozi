@@ -25,11 +25,26 @@ const globalLimiter = jsonLimiter({
   message: 'Too many requests, please try again later',
 });
 
+// Credential attempts (login/register/password change).
+//
+// Mobile subscribers share carrier NAT addresses, so a per-IP budget of 10 per
+// 15 minutes locked out users who had only opened the app a few times.
+// Brute force is still bounded per account by AUTH.MAX_FAILED (account lock),
+// and this limit keeps its role of stopping bulk abuse.
 const authLimiter = jsonLimiter({
   name: 'auth',
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // limit each IP to 10 requests per windowMs
-  message: 'Too many authentication attempts, please try again later',
+  max: 30, // limit each IP to 30 credential requests per windowMs
+  message: 'تعداد تلاش‌های ورود بیش از حد مجاز است؛ چند دقیقه بعد دوباره امتحان کنید',
+});
+
+// Session rotation (refresh/logout). Every app start refreshes the session, so
+// this traffic must not consume the credential budget above.
+const sessionLimiter = jsonLimiter({
+  name: 'session',
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 120,
+  message: 'تعداد درخواست‌های نشست بیش از حد مجاز است؛ چند دقیقه بعد دوباره تلاش کنید',
 });
 
 const ocrLimiter = jsonLimiter({
@@ -53,4 +68,4 @@ const paymentLimiter = jsonLimiter({
   message: 'Too many payment requests, please try again later',
 });
 
-export { globalLimiter, authLimiter, paymentLimiter, searchLimiter, ocrLimiter };
+export { globalLimiter, authLimiter, sessionLimiter, paymentLimiter, searchLimiter, ocrLimiter };

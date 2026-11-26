@@ -16,8 +16,10 @@ import '../../global.css';
  * mirroring off gives one predictable LTR layout base that our own direction
  * styles control everywhere.
  *
- * `allowRTL(false)` has to be in effect when the native view is created; the
- * setting is applied on the next launch of the installed app.
+ * `allowRTL(false)` only takes effect on the next launch of the installed app,
+ * so a fresh install would still mirror everything on its first run. The root
+ * view therefore also pins Yoga's own direction to LTR, which is applied
+ * immediately and makes the first launch behave like every later one.
  */
 I18nManager.allowRTL(false);
 I18nManager.forceRTL(false);
@@ -25,9 +27,10 @@ I18nManager.forceRTL(false);
 function AppNavigator() {
   const { isDark } = useAppSettings();
 
-  // The root deliberately has no `direction` style: each screen applies the
-  // language direction through explicit `row-reverse`/`textAlign` styles, and
-  // letting Yoga mirror rows here would flip them a second time.
+  // The LTR base is enforced here, in Yoga, rather than left to I18nManager:
+  // each screen applies the language direction through explicit
+  // `row-reverse`/`textAlign` styles, so letting the platform mirror rows
+  // would flip them a second time.
   return (
     <View style={styles.root}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -53,4 +56,4 @@ export default function RootLayout() {
   );
 }
 
-const styles = StyleSheet.create({ root: { flex: 1 } });
+const styles = StyleSheet.create({ root: { flex: 1, direction: 'ltr' } });

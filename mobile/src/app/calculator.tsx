@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { I18nManager, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -37,12 +37,10 @@ const ROWS = [
 const OPERATORS = ['÷', '×', '−', '+', '%'];
 
 /**
- * A calculator grid is always read left-to-right, so it must not follow the
- * device layout direction. On an RTL device React Native already lays out a
- * `row` from right to left, so reversing the keys cancels that mirroring and
- * keeps the digits where a calculator user expects them.
+ * Key grids are rendered exactly as declared. The app root pins Yoga to LTR
+ * (`_layout.tsx`), so a calculator's digits stay in their natural order on a
+ * Persian device without reversing them a second time.
  */
-const visualOrder = (keys: string[]) => (I18nManager.isRTL ? [...keys].reverse() : keys);
 
 /** Persian <-> English number display for inputs and expressions. */
 const fromFa = (value: string) => value.replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
@@ -323,7 +321,7 @@ export default function CalculatorScreen() {
                 ['^', '*', '/', '−'],
               ].map((row, index) => (
                 <View key={index} style={s.functionRow}>
-                  {visualOrder(row).map(key => (
+                  {row.map(key => (
                     <Pressable key={key} style={s.functionKey} onPress={() => {
                       setExpression(value => (value + key).slice(0, 120));
                       setResult(null);
@@ -338,7 +336,7 @@ export default function CalculatorScreen() {
             <View style={s.keypad}>
               {ROWS.map((row, index) => (
                 <View key={index} style={s.keyRow}>
-                  {visualOrder(row).map(key => {
+                  {row.map(key => {
                     const op = OPERATORS.includes(key);
                     const isClear = key === 'C';
                     const isDel = key === '⌫';
@@ -396,7 +394,7 @@ export default function CalculatorScreen() {
             <TextInput value={complexA} onChangeText={setComplexA} style={s.input} autoCapitalize="none" />
             <Text style={s.fieldLabel}>عملگر</Text>
             <View style={s.operationRow}>
-              {visualOrder(['+', '−', '×', '÷']).map(op => (
+              {['+', '−', '×', '÷'].map(op => (
                 <Pressable key={op} onPress={() => setComplexOperation(op)} style={[s.operationButton, complexOperation === op && s.operationSelected]}>
                   <Text style={s.operationText}>{op}</Text>
                 </Pressable>
