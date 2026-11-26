@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CreditCard, Info, Receipt } from 'lucide-react-native';
 import { AppScreen } from '../features/common/AppScreen';
 import { useDesignTokens } from '../core/theme/useDesignTokens';
@@ -118,9 +118,32 @@ export default function BillPaymentScreen() {
         {PAYMENT_STEPS.map((step, index) => (
           <Text key={step} style={[styles.step, { color: ui.muted, textAlign }]}>{toFa(index + 1)}. {step}</Text>
         ))}
-        <Text style={[styles.step, { color: ui.danger, textAlign }]}>
-          پرداخت آنلاین در این نسخه به درگاه بانکی وصل نیست؛ از درگاه رسمی شرکت توزیع استفاده کنید.
-        </Text>
+                <Pressable
+          onPress={() =>
+ Linking.openURL('https://bargheman.com/bill-inquiry-without-id')}
+          accessibilityRole="link"
+          accessibilityLabel="ورود به سامانه استعلام و پرداخت قبض برق"
+          style={{
+            marginTop: 14,
+            paddingVertical: 14,
+            paddingHorizontal: 16,
+            borderRadius: 12,
+            backgroundColor: ui.blue,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text
+            style={{
+              color: '#FFFFFF',
+              fontSize: 14,
+              fontWeight: '800',
+              textAlign: 'center',
+            }}
+          >
+            استعلام و پرداخت آنلاین قبض برق
+          </Text>
+        </Pressable>
       </View>
     </AppScreen>
   );
