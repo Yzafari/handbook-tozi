@@ -61,7 +61,7 @@ export function toPublicPayment(payment) {
  * is resolved below without ever creating a second gateway session.
  *
  * @param {string} userId
- * @param {{ planId: string, durationDays?: number, idempotencyKey?: string }} payload
+ * @param {{ planId: string, idempotencyKey?: string }} payload
  * @param {import('express').Request} [req]
  * @returns {Promise<{ payment: object, paymentUrl: string, authority: string, reused?: boolean }>}
  */
@@ -99,11 +99,9 @@ export async function createPaymentRequest(userId, payload = {}, req) {
 
   const requestedDays = Number(payload.durationDays);
   const durationDays =
-    Number.isInteger(requestedDays) && requestedDays > 0
-      ? requestedDays
-      : Number(plan.durationDays) > 0
-        ? Number(plan.durationDays)
-        : DEFAULT_DURATION_DAYS;
+    Number.isInteger(plan.durationDays) && plan.durationDays > 0
+    ? plan.durationDays
+    : DEFAULT_DURATION_DAYS;
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
