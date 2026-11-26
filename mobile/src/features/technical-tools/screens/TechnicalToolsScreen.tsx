@@ -106,7 +106,7 @@ export default function TechnicalToolsScreen() {
           <ArrowRight size={20} color={isDark ? '#E5E7EB' : '#111827'} />
         </TouchableOpacity>
 
-        <Text className="text-lg font-bold text-gray-900 dark:text-white">ابزارهای فنی</Text>
+        <Text className="text-lg font-bold text-gray-900 dark:text-white">ابزارها و محاسبات فنی</Text>
 
         <TouchableOpacity
           activeOpacity={0.7}
