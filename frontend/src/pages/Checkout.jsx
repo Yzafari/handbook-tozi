@@ -7,11 +7,13 @@ import Modal from '../components/common/Modal';
 import Loader from '../components/common/Loader';
 import { useToast } from '../hooks/useToast';
 
-function getOrCreateIdempotencyKey(planId) {
-  const storageKey = `gh_idem_${planId}`;
+function getOrCreateIdempotencyKey(planId, amountToman) {
+  const storageKey = `gh_idem_${planId}_${amountToman}`;
+
   try {
     const existing = sessionStorage.getItem(storageKey);
     if (existing) return existing;
+
     const key = crypto.randomUUID();
     sessionStorage.setItem(storageKey, key);
     return key;
