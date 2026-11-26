@@ -60,7 +60,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile.worker
     env_file:
-      - ./backend/.env
+      # Optional: the required values below are injected from the shell/.env.
+      - path: ./backend/.env
+        required: false
     environment:
       DATABASE_URL: ${WORKER_DATABASE_URL:?Set WORKER_DATABASE_URL for the worker container}
       DATACENTER_URL: http://document-storage:8081
@@ -83,7 +85,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile.worker
     env_file:
-      - ./backend/.env
+      # Optional: the required values below are injected from the shell/.env.
+      - path: ./backend/.env
+        required: false
     environment:
       DATABASE_URL: ${WORKER_DATABASE_URL:?Set WORKER_DATABASE_URL for the worker container}
       DATACENTER_URL: http://document-storage:8081

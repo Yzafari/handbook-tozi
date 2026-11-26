@@ -1,1 +1,0 @@
-mkdir -p .github/workflows && git mv .gitub/workflows/build.yml .github/workflows/build.yml
