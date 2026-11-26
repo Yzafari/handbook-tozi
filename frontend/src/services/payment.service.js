@@ -32,10 +32,20 @@ export const verifyPayment = async (authority, status) => {
     throw error;
   }
 };
-// Checkout sends the plan ID and a stable idempotency key together.
-export const requestPayment = async ({ planId, idempotencyKey }) => {
+
+// Checkout sends the plan ID, selected amount and idempotency key.
+export const requestPayment = async ({
+  planId,
+  amountToman,
+  idempotencyKey,
+}) => {
   try {
-    const response = await api.post('/payment/request', { planId, idempotencyKey });
+    const response = await api.post('/payment/request', {
+      planId,
+      amountToman,
+      idempotencyKey,
+    });
+
     return response.data.data || response.data;
   } catch (error) {
     console.error('خطا در ایجاد درخواست پرداخت:', error);
