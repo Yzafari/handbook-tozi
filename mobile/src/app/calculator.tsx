@@ -13,6 +13,18 @@ import { getUi, NAVY, type Ui } from '../core/theme/gridhandUi';
 
 type CalculationEntry = { id: string; expression: string; result: string; createdAt: string };
 type Tab = 'Calc' | 'Complex' | 'Convert' | 'Graph';
+const TAB_LABELS: Record<Tab, string> = { Calc: 'محاسبه', Complex: 'مختلط', Convert: 'تبدیل واحد', Graph: 'نمودار' };
+
+/**
+ * Degree mode is applied to the whole expression once, with parenthesis-aware
+ * rewriting of each trig argument. Rewriting the display text separately (as
+ * the old preview did) produced a different value from the one the Calculate
+ * button returned.
+ */
+function toRadians(expression: string): string {
+  return expression.replace(/\b(sin|cos|tan)\(([^()]*(?:\([^()]*\)[^()]*)*)\)/gi,
+    (_match, fn: string, arg: string) => `${fn}((${arg})*pi/180)`);
+}
 type Complex = { re: number; im: number };
 
 const ROWS = [
@@ -31,6 +43,9 @@ const OPERATORS = ['÷', '×', '−', '+', '%'];
  * keeps the digits where a calculator user expects them.
  */
 const visualOrder = (keys: string[]) => (I18nManager.isRTL ? [...keys].reverse() : keys);
+
+/** Persian <-> English number display for inputs and expressions. */
+const fromFa = (value: string) => value.replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 
 const toFa = (v: string) =>
   v.replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]).replace(/\./g, '٫');
@@ -159,18 +174,16 @@ export default function CalculatorScreen() {
     return formatCalculatorResult(value);
   }, [notation, fixDigits]);
 
+  const preparedExpression = useMemo(
+    () => (angleMode === 'RAD' ? fromFa(expression) : toRadians(fromFa(expression))),
+    [expression, angleMode],
+  );
+
   const preview = useMemo(() => {
-    if (!expression.trim()) return null;
-    try {
-      const prepared = angleMode === 'DEG'
-        ? expression.replace(/\b(sin|cos|tan)\(/gi, '$1((180/pi)*(')
-            .replace(/\b(sin|cos|tan)\(\((180\/pi)\)\*\(([^()]*)\)\)/gi, '$1(($3)*pi/180)')
-        : expression;
-      return formatDisplay(evaluateExpression(prepared));
-    } catch {
-      return null;
-    }
-  }, [expression, angleMode, formatDisplay]);
+    if (!preparedExpression.trim()) return null;
+    try { return formatDisplay(evaluateExpression(preparedExpression)); }
+    catch { return null; }
+  }, [preparedExpression, formatDisplay]);
 
   const pressKey = (key: string) => {
     setError('');
@@ -189,15 +202,9 @@ export default function CalculatorScreen() {
     setExpression(value => (value + mapped).slice(0, 120));
   };
 
-  const prepareExpression = (value: string) => {
-    if (angleMode === 'RAD') return value;
-    return value.replace(/\b(sin|cos|tan)\(([^()]*)\)/gi, (_match, fn, arg) =>
-      `${fn}((${arg})*pi/180)`);
-  };
-
   const calculate = async () => {
     try {
-      const value = evaluateExpression(prepareExpression(expression));
+      const value = evaluateExpression(preparedExpression);
       setResult(formatDisplay(value));
       setError('');
 
@@ -246,7 +253,7 @@ export default function CalculatorScreen() {
       for (let i = 0; i <= 40; i++) {
         const x = -range + (2 * range * i / 40);
         const formula = graphExpression.replace(/\bx\b/gi, `(${x})`);
-        values.push(evaluateExpression(prepareExpression(formula)));
+        values.push(evaluateExpression(angleMode === 'RAD' ? fromFa(formula) : toRadians(fromFa(formula))));
       }
       if (values.some(value => !Number.isFinite(value))) {
         throw new Error('نمودار شامل مقدار نامعتبر است');
@@ -276,8 +283,9 @@ export default function CalculatorScreen() {
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={s.tabs}>
           {(['Calc', 'Complex', 'Convert', 'Graph'] as Tab[]).map(item => (
-            <Pressable key={item} onPress={() => { setTab(item); setError(''); }} style={[s.tab, tab === item && s.tabActive]}>
-              <Text style={[s.tabText, tab === item && s.tabTextActive]}>{item}</Text>
+            <Pressable key={item} onPress={() => { setTab(item); setError(''); }} style={[s.tab, tab === item && s.tabActive]}
+              accessibilityRole="tab" accessibilityState={{ selected: tab === item }}>
+              <Text style={[s.tabText, tab === item && s.tabTextActive]}>{TAB_LABELS[item]}</Text>
             </Pressable>
           ))}
         </View>

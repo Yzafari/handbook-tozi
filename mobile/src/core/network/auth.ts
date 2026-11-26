@@ -15,6 +15,30 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   return data.user;
 }
 
+export type RegisterInput = {
+  fullName: string;
+  email: string;
+  password: string;
+  phone?: string;
+};
+
+/**
+ * Creates the account and signs it in with the tokens the API returns for the
+ * new session, so a successful sign-up lands the user straight in the app.
+ */
+export async function register(input: RegisterInput): Promise<AuthUser> {
+  const response = await api.post('/auth/register', input);
+  const data = response.data?.data as AuthResponse | { user?: AuthUser };
+  const session = data as AuthResponse;
+  if (!session?.accessToken || !session?.refreshToken || !session?.user) {
+    throw new Error('پاسخ ثبت‌نام از سرور معتبر نیست');
+  }
+  setAccessToken(session.accessToken);
+  await saveRefreshToken(session.refreshToken);
+  await saveCachedUser(session.user);
+  return session.user;
+}
+
 export async function restoreAuthenticatedUser(): Promise<AuthUser | null> {
   const data = await restoreSession();
   return data?.user ?? null;

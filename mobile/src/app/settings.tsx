@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAppSettings, type AppLanguage, type AppTheme } from '../core/settings/AppSettingsContext';
+import { ConnectionTestCard } from '../features/diagnostics/ConnectionTestCard';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -17,6 +18,8 @@ export default function SettingsScreen() {
 
   return <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]}>
     <View style={[styles.header, { flexDirection: direction === 'rtl' ? 'row-reverse' : 'row' }]}><Pressable onPress={() => router.back()}><Text style={[styles.back, { color: palette.accent }]}>{t('back')}</Text></Pressable><Text style={[styles.title, { color: palette.text }]}>{t('settings')}</Text></View>
+    <Text style={[styles.section, { color: palette.text, textAlign: direction === 'rtl' ? 'right' : 'left' }]}>{t('connectionTest')}</Text>
+    <ConnectionTestCard />
     <Text style={[styles.section, { color: palette.text, textAlign: direction === 'rtl' ? 'right' : 'left' }]}>{t('language')}</Text>
     <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>{languages.map(item => <Pressable key={item.value} onPress={() => void chooseLanguage(item.value)} style={[styles.option, { flexDirection: direction === 'rtl' ? 'row-reverse' : 'row', borderBottomColor: palette.border }]}><Text style={[styles.optionText, { color: palette.text }]}>{item.label}</Text><Text style={[styles.check, { color: palette.accent }]}>{language === item.value ? '✓' : ''}</Text></Pressable>)}</View>
     <Text style={[styles.section, { color: palette.text, textAlign: direction === 'rtl' ? 'right' : 'left' }]}>{t('theme')}</Text>

@@ -22,11 +22,17 @@ services:
     build: ./backend
     restart: unless-stopped
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
+      # Local compose is a development stack. Production deployments must set
+      # NODE_ENV=production together with every HTTPS/secret value required by
+      # backend/src/config/env.js (see .env.example).
+      NODE_ENV: ${NODE_ENV:-development}
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER:-gridhand}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-gridhand}?schema=public
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-lax}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required (min 32 chars)}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required (64 hex chars)}
       PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:?PAYMENT_WEBHOOK_SECRET is required (min 16 chars)}
@@ -39,9 +45,13 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       MAIL_FROM: ${MAIL_FROM:-App <no-reply@localhost>}
       DATACENTER_SIGNING_SECRET: ${DATACENTER_SIGNING_SECRET:?DATACENTER_SIGNING_SECRET is required (min 32 chars)}
+      DATACENTER_INTERNAL_TOKEN: ${DATACENTER_INTERNAL_TOKEN:-}
+      DATACENTER_PUBLIC_URL: ${DATACENTER_PUBLIC_URL:-}
       DATACENTER_URL: ${DATACENTER_URL:-http://127.0.0.1:8081}
       REDIS_URL: ${REDIS_URL:-}
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://127.0.0.1:9200}
+      OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
       UPLOAD_DIR: ${UPLOAD_DIR:-uploads}
     volumes:
       - uploads_data:/app/uploads

@@ -4,8 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  BookOpen, Briefcase, Calculator, Camera, ClipboardList, CreditCard, Gavel, Headset,
-  MessageCircle, Network, Receipt, Search, ShieldCheck, Store, TowerControl, Users, Zap,
+  BookOpen, Briefcase, Calculator, Camera, ChevronLeft, ChevronRight, ClipboardList, CreditCard, Gavel, Headset,
+  MessageCircle, Network, Receipt, Search, Settings, ShieldCheck, Store, TowerControl, Users, Zap,
   type LucideIcon,
 } from 'lucide-react-native';
 import { getHomeModules, type AppModule } from '../core/modules/registry';
@@ -28,12 +28,16 @@ const META: Record<string, Meta> = {
 };
 const FALLBACK: Meta = { icon: Zap, tint: '#FFC21A', grad: ['#16345C', '#2A5A9A'], photo: null };
 
-const QUICK: { key: string; icon: LucideIcon }[] = [
-  { key: 'quickTender', icon: Gavel }, { key: 'quickMarket', icon: Store }, { key: 'quickJobs', icon: Briefcase },
+const QUICK: { key: string; icon: LucideIcon; section: 'tenders' | 'market' | 'jobs' }[] = [
+  { key: 'quickTender', icon: Gavel, section: 'tenders' },
+  { key: 'quickMarket', icon: Store, section: 'market' },
+  { key: 'quickJobs', icon: Briefcase, section: 'jobs' },
 ];
-const DEPTS: { key: string; icon: LucideIcon }[] = [
-  { key: 'operations', icon: TowerControl }, { key: 'engineeringPlanning', icon: Network },
-  { key: 'sales', icon: Users }, { key: 'consultant', icon: Headset },
+const DEPTS: { key: string; icon: LucideIcon; id: 'operations' | 'engineeringPlanning' | 'sales' | 'consultant' }[] = [
+  { key: 'operations', icon: TowerControl, id: 'operations' },
+  { key: 'engineeringPlanning', icon: Network, id: 'engineeringPlanning' },
+  { key: 'sales', icon: Users, id: 'sales' },
+  { key: 'consultant', icon: Headset, id: 'consultant' },
 ];
 
 function Backdrop({ photo, colors, style, children }: {
@@ -50,7 +54,7 @@ export default function HomeScreen() {
   const { t } = useAppSettings();
   const { isDark, isRTL, rowDirection, textAlign } = useDesignTokens();
   const ui = getUi(isDark);
-  const s = useMemo(() => createStyles(ui, rowDirection, textAlign), [ui, rowDirection, textAlign]);
+  const s = useMemo(() => createStyles(ui, rowDirection, textAlign, isRTL), [ui, rowDirection, textAlign, isRTL]);
 
   const moduleKeys: Record<string, Parameters<typeof t>[0]> = { 'bill-payment': 'ghabz', 'bill-calculator': 'taghiz', engineering: 'engineering', safety: 'safety', project: 'project', notebook: 'notebookModule' };
   const moduleLabel = (item: Readonly<AppModule>): string => {
@@ -62,6 +66,7 @@ export default function HomeScreen() {
   const isLive = (m: Readonly<AppModule>) => m.status === 'active' && !!m.route;
   const sorted = [...modules].sort((a, b) => Number(isLive(b)) - Number(isLive(a)));
   const headline = user?.name ? t('greetingWithName', { name: user.name }) : t('greeting');
+  const Chevron = isRTL ? ChevronLeft : ChevronRight;
 
   return (
     <View style={s.root}>
@@ -73,9 +78,14 @@ export default function HomeScreen() {
               <View style={s.brandChip}><Zap size={18} color="#04121F" fill="#04121F" /></View>
               <Text style={s.brandName}>{t('appName')}</Text>
             </View>
-            <Pressable style={s.avatar} onPress={() => router.push('/profile')} accessibilityRole="button" accessibilityLabel={t('profile' as Parameters<typeof t>[0])}>
-              <Text style={s.avatarText}>{getJobRoleAvatar(user?.jobRole)}</Text>
-            </Pressable>
+            <View style={s.heroActions}>
+              <Pressable style={s.heroIconBtn} onPress={() => router.push('/settings')} accessibilityRole="button" accessibilityLabel={t('settings')} hitSlop={6}>
+                <Settings size={18} color="#FFFFFF" />
+              </Pressable>
+              <Pressable style={s.avatar} onPress={() => router.push('/profile')} accessibilityRole="button" accessibilityLabel={t('profile')}>
+                <Text style={s.avatarText}>{getJobRoleAvatar(user?.jobRole)}</Text>
+              </Pressable>
+            </View>
           </View>
           <Text style={s.headline}>{headline}</Text>
         </Backdrop>
@@ -105,7 +115,7 @@ export default function HomeScreen() {
                     <LinearGradient colors={['rgba(4,14,28,0.05)', 'rgba(4,14,28,0.9)']} style={StyleSheet.absoluteFill} />
                     <View style={s.tileTop}>
                       <View style={[s.chip, { backgroundColor: meta.tint }]}><Icon size={18} color="#04121F" /></View>
-                      {!live && <View style={s.soon}><Text style={s.soonText}>{t('comingSoon')}</Text></View>}
+                      <Chevron size={16} color="rgba(255,255,255,0.8)" />
                     </View>
                     <Text style={s.tileLabel} numberOfLines={2}>{moduleLabel(item)}</Text>
                   </Backdrop>
@@ -114,7 +124,7 @@ export default function HomeScreen() {
             })}
           </View>
 
-          <View style={s.card}>
+          <Pressable style={s.card} onPress={() => router.push('/chat')} accessibilityRole="button" accessibilityLabel={t('chat')}>
             <View style={s.cardHead}>
               <View style={s.iconBox}><MessageCircle size={20} color={ui.accent} /></View>
               <View style={{ flex: 1 }}>
@@ -127,18 +137,20 @@ export default function HomeScreen() {
               <Text style={s.chatEmptyText}>{t('chatPending')}</Text>
               <View style={s.pill}><Users size={14} color={ui.accent} /><Text style={s.pillText}>{t('colleaguesFive')}</Text></View>
             </View>
-          </View>
+          </Pressable>
 
           <View style={s.card}>
             <Text style={s.cardTitle}>{t('quickAccessTitle')}</Text>
             {QUICK.map((q, i) => {
               const Icon = q.icon;
               return (
-                <View key={q.key} style={[s.quickRow, i > 0 && s.quickDivider]}>
+                <Pressable key={q.key} onPress={() => router.push(`/opportunities?section=${q.section}` as Href)}
+                  style={({ pressed }) => [s.quickRow, i > 0 && s.quickDivider, pressed && { opacity: 0.65 }]}
+                  accessibilityRole="button" accessibilityLabel={t(q.key as Parameters<typeof t>[0])}>
                   <View style={s.iconBoxSm}><Icon size={16} color={ui.blue} /></View>
                   <Text style={s.quickLabel}>{t(q.key as Parameters<typeof t>[0])}</Text>
-                  <View style={s.soon2}><Text style={s.soon2Text}>{t('comingSoon')}</Text></View>
-                </View>
+                  <Chevron size={16} color={ui.muted} />
+                </Pressable>
               );
             })}
           </View>
@@ -148,10 +160,12 @@ export default function HomeScreen() {
             {DEPTS.map((d) => {
               const Icon = d.icon;
               return (
-                <View key={d.key} style={s.dept}>
+                <Pressable key={d.key} onPress={() => router.push(`/departments?focus=${d.id}` as Href)}
+                  style={({ pressed }) => [s.dept, pressed && { opacity: 0.65 }]}
+                  accessibilityRole="button" accessibilityLabel={t(d.key as Parameters<typeof t>[0])}>
                   <Icon size={14} color={ui.accent} />
                   <Text style={s.deptText}>{t(d.key as Parameters<typeof t>[0])}</Text>
-                </View>
+                </Pressable>
               );
             })}
           </View>
@@ -166,11 +180,13 @@ export default function HomeScreen() {
   );
 }
 
-const createStyles = (ui: Ui, row: 'row' | 'row-reverse', align: 'left' | 'right') => StyleSheet.create({
+const createStyles = (ui: Ui, row: 'row' | 'row-reverse', align: 'left' | 'right', isRTL: boolean) => StyleSheet.create({
   root: { flex: 1, backgroundColor: ui.bg },
   pad: { paddingHorizontal: 16 },
   hero: { paddingHorizontal: 18, paddingBottom: 46, borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden', minHeight: 210 },
   heroRow: { flexDirection: row, alignItems: 'center', justifyContent: 'space-between' },
+  heroActions: { flexDirection: row, alignItems: 'center', gap: 10 },
+  heroIconBtn: { width: 38, height: 38, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
   brandRow: { flexDirection: row, alignItems: 'center', gap: 10 },
   brandChip: { width: 34, height: 34, borderRadius: 11, backgroundColor: '#FFC21A', alignItems: 'center', justifyContent: 'center' },
   brandName: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
@@ -188,8 +204,6 @@ const createStyles = (ui: Ui, row: 'row' | 'row-reverse', align: 'left' | 'right
   tile: { height: 124, borderRadius: 20, overflow: 'hidden', padding: 12, justifyContent: 'space-between' },
   tileTop: { flexDirection: row, justifyContent: 'space-between', alignItems: 'center' },
   chip: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  soon: { backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
-  soonText: { color: '#E6EEF7', fontSize: 9, fontWeight: '700' },
   tileLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '800', lineHeight: 20, textAlign: align },
   card: { backgroundColor: ui.surface, borderRadius: 22, borderWidth: 1, borderColor: ui.border, padding: 16, marginBottom: 14 },
   cardHead: { flexDirection: row, alignItems: 'center', gap: 12 },
@@ -205,12 +219,10 @@ const createStyles = (ui: Ui, row: 'row' | 'row-reverse', align: 'left' | 'right
   quickRow: { flexDirection: row, alignItems: 'center', gap: 12, minHeight: 50 },
   quickDivider: { borderTopWidth: 1, borderTopColor: ui.border },
   quickLabel: { flex: 1, color: ui.text, fontSize: 13, fontWeight: '600', textAlign: align },
-  soon2: { backgroundColor: ui.surfaceAlt, borderRadius: 9, paddingHorizontal: 8, paddingVertical: 3 },
-  soon2Text: { color: ui.muted, fontSize: 9, fontWeight: '700' },
   depts: { flexDirection: row, flexWrap: 'wrap', gap: 8 },
   dept: { flexDirection: row, alignItems: 'center', gap: 6, backgroundColor: ui.surface, borderWidth: 1, borderColor: ui.border, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
   deptText: { color: ui.text, fontSize: 12, fontWeight: '700' },
   footer: { color: ui.muted, textAlign: 'center', fontSize: 10, marginTop: 22 },
-  fab: { position: 'absolute', right: 18, bottom: 24, width: 58, height: 58, borderRadius: 20, shadowColor: '#00A36C', shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
+  fab: { position: 'absolute', ...(isRTL ? { left: 18 } : { right: 18 }), bottom: 24, width: 58, height: 58, borderRadius: 20, shadowColor: '#00A36C', shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
   fabInner: { flex: 1, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 });

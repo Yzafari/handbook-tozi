@@ -67,11 +67,11 @@ export function createModuleRegistry(definitions: AppModule[]): readonly Readonl
 }
 
 export const MODULE_REGISTRY: readonly Readonly<AppModule>[] = createModuleRegistry([
-  { id: 'bill-payment', label: 'پرداخت قبض', icon: '💳', status: 'coming-soon' },
-  { id: 'bill-calculator', label: 'استانداردها و دستورالعمل‌ها', icon: '🧾', status: 'coming-soon' },
-  { id: 'engineering', label: 'محاسبات فنی', icon: '⚡', status: 'coming-soon' },
-  { id: 'safety', label: 'پیام‌ها و اصول ایمنی', icon: '🦺', status: 'coming-soon' },
-  { id: 'project', label: 'پروژه های من', icon: '📝', status: 'coming-soon' },
+  { id: 'bill-payment', label: 'پرداخت قبض', icon: '💳', status: 'active', route: '/bill-payment' },
+  { id: 'bill-calculator', label: 'استانداردها و دستورالعمل‌ها', icon: '🧾', status: 'active', route: '/standards' },
+  { id: 'engineering', label: 'محاسبات فنی', icon: '⚡', status: 'active', route: '/technical-tools' },
+  { id: 'safety', label: 'پیام‌ها و اصول ایمنی', icon: '🦺', status: 'active', route: '/safety' },
+  { id: 'project', label: 'پروژه های من', icon: '📝', status: 'active', route: '/projects' },
   { id: 'notebook', label: 'دفترچه فنی', icon: '📒', status: 'active', route: '/notebook' },
 ]);
 

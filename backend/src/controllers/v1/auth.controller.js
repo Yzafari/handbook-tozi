@@ -5,8 +5,17 @@ import { register, login, refresh, logout, changePassword } from '../../services
 function readRefreshToken(req) { return req.body?.refreshToken ?? null; }
 
 export const registerMobile = asyncHandler(async (req, res) => {
-  const user = await register(req.body);
-  return created(res, { user }, 'ثبت‌نام با موفقیت انجام شد');
+  await register(req.body);
+  // Sign the new account in immediately: the mobile client would otherwise
+  // have to make a second request, and a failure between the two calls left a
+  // freshly registered user without a usable session.
+  const result = await login({ email: req.body.email, password: req.body.password });
+  return created(res, {
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken,
+    tokenType: 'Bearer',
+    user: result.user,
+  }, 'ثبت‌نام با موفقیت انجام شد');
 });
 
 export const loginMobile = asyncHandler(async (req, res) => {

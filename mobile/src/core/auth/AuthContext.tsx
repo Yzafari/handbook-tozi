@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AppState } from 'react-native';
 import type { AppStateStatus } from 'react-native';
-import { login as performLogin, logout as performLogout, restoreAuthenticatedUser } from '../network/auth';
-import type { AuthUser } from '../network/auth';
+import { login as performLogin, logout as performLogout, register as performRegister, restoreAuthenticatedUser } from '../network/auth';
+import type { AuthUser, RegisterInput } from '../network/auth';
 import { startAutoSync } from '../sync/autoSync';
 import { api, restoreSession, setAuthExpiredHandler } from '../network/api';
 import { readCachedUser, saveCachedUser } from '../security/secureTokens';
@@ -11,6 +11,7 @@ type AuthContextValue = {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (patch: { province?: string; jobRole?: string }) => Promise<void>;
 };
@@ -66,6 +67,12 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
     setSessionAuthenticated(true);
   }, []);
 
+  const register = useCallback(async (input: RegisterInput) => {
+    const authenticated = await performRegister(input);
+    setUser(authenticated);
+    setSessionAuthenticated(true);
+  }, []);
+
   const updateProfile = useCallback(async (patch: { province?: string; jobRole?: string }) => {
     const response = await api.patch('/users/me', patch);
     const updated = response.data?.data?.user as AuthUser | undefined;
@@ -103,7 +110,7 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
     }
   }, []);
 
-  const value = useMemo(() => ({ user, loading, login, logout, updateProfile }), [user, loading, login, logout, updateProfile]);
+  const value = useMemo(() => ({ user, loading, login, register, logout, updateProfile }), [user, loading, login, register, logout, updateProfile]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

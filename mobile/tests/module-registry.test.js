@@ -22,9 +22,22 @@ test('module registry rejects duplicate ids, duplicate routes and active modules
   assert.throws(() => createModuleRegistry([{ id: 'module-a', label: 'A', icon: 'A', status: 'active' }]), /requires an absolute route/);
 });
 
-test('the production module registry has unique ids and keeps only the notebook route active', () => {
+test('every production home module is active and has its own screen route', async () => {
+  const { readFile } = await import('node:fs/promises');
   assert.equal(new Set(MODULE_REGISTRY.map(module => module.id)).size, MODULE_REGISTRY.length);
-  assert.deepEqual(MODULE_REGISTRY.filter(module => module.status === 'active').map(module => module.id), ['notebook']);
+  assert.deepEqual(
+    MODULE_REGISTRY.filter(module => module.status === 'active').map(module => module.id),
+    ['bill-payment', 'bill-calculator', 'engineering', 'safety', 'project', 'notebook'],
+  );
+
+  // An active module must not point at a route that does not exist: that is how
+  // the tiles ended up looking enabled but doing nothing.
+  for (const module of MODULE_REGISTRY) {
+    assert.ok(module.route, `${module.id} needs a route`);
+    const screen = `${module.route.slice(1)}.tsx`;
+    const source = await readFile(new URL(`../src/app/${screen}`, import.meta.url), 'utf8');
+    assert.ok(source.length > 0, `${screen} is empty`);
+  }
 });
 
 test('home keeps colleague chats in the middle and quick-access options before departments', async () => {

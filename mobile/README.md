@@ -33,7 +33,8 @@ On macOS, use `npx expo run:ios` for iOS.
 - OCR photos are copied into the app's persistent documents directory before upload. They are not discarded when a network request fails.
 
 ## Current mobile routes
-- `/` — compact home screen with Persian/Kurdish/English labels and RTL/LTR layout
+- `/` — compact home screen with Persian/Kurdish/English labels and RTL/LTR layout; all module tiles, quick access, chat and departments open their screens
+- `/signup` — account creation (name, email, password, optional phone) that signs the user in immediately
 - `/search` — debounced data-center search with user-scoped offline result cache
 - `/document/:id` — document metadata and short-lived signed file opening link
 - `/camera` — camera capture, persistent local OCR queue, Persian/English extraction
@@ -42,8 +43,18 @@ On macOS, use `npx expo run:ios` for iOS.
 - `/settings` — persisted language and light/dark/system/automatic-by-hour appearance settings
 - `/calculator` — general calculator with offline calculation history
 - `/login` — account login; public search remains available to guests
+- `/settings` — language, appearance and the API connection test (address + `/api/v1/health`)
+- `/connection-test` — full connection diagnostic, also linked from the login screen
+- `/technical-tools` and `/tools/[id]` — engineering calculators and reference tables (voltage drop, transformer protection, clearances, ACSR conductors)
+- `/standards` — standards and guideline reference with search and categories
+- `/safety` — safety principles, messages and a persisted pre-work checklist
+- `/projects` — local project list stored per account on the device
+- `/bill-payment` — tiered bill estimate with editable tariffs and a payment guide (no gateway yet)
+- `/opportunities` — tenders, equipment market and job listings guidance
+- `/departments` — deputy areas of responsibility with links to chat rooms
+- `/chat` — topic chat rooms; messages are stored on the device until the server chat service is connected
 
-The other product modules are represented in the home navigation design but are not yet active. They must be implemented against approved formulas, source material and backend contracts before activation.
+Server-side live feeds (tenders, market prices, multi-user chat, online bill payment) are not part of this build; the screens state this limitation in place.
 
 ## سیاست نگهداری آفلاین و محدودیت منابع
 

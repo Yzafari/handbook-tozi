@@ -43,8 +43,11 @@ export function validate(schemas) {
     } catch (error) {
       if (error instanceof ZodError) {
         // Keep the issues array structured: pass it as `details` so the error
-        // handler can return it under `meta` instead of stringifying it.
-        return next(new AppError(400, 'VALIDATION_ERROR', 'Validation error', error.issues));
+        // handler can return it under `meta` instead of stringifying it. The
+        // message itself is the first human-readable issue (the schemas carry
+        // Persian messages), so clients can show it without parsing details.
+        const message = error.issues[0]?.message || 'Validation error';
+        return next(new AppError(400, 'VALIDATION_ERROR', message, error.issues));
       }
       next(error);
     }

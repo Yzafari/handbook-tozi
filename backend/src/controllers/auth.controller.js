@@ -9,11 +9,12 @@ const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 // `secure` must be off in local dev, otherwise the browser silently drops the
 // cookie over plain HTTP and refresh/logout appear broken.
 function refreshCookieOptions() {
-  const isProduction = process.env.NODE_ENV === 'production';
   return {
     httpOnly: true,
-    // در محیط توسعه روی http نباید secure برابر با true باشد
-    secure: isProduction, 
+    // Mirrors the validated COOKIE_SECURE setting instead of NODE_ENV, so a
+    // production deployment that terminates TLS upstream can choose its cookie
+    // policy explicitly and dev over plain HTTP is never silently broken.
+    secure: env.COOKIE_SECURE,
     sameSite: env.COOKIE_SAME_SITE,
     path: '/',
     maxAge: REFRESH_COOKIE_MAX_AGE_MS,

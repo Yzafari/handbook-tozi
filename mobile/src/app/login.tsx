@@ -3,9 +3,10 @@ import { ActivityIndicator, ImageBackground, KeyboardAvoidingView, Platform, Pre
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Zap } from 'lucide-react-native';
+import { Wifi, Zap } from 'lucide-react-native';
 import { useAuth } from '../core/auth/AuthContext';
 import { useAppSettings } from '../core/settings/AppSettingsContext';
+import { apiErrorMessage } from '../core/network/errors';
 import { NAVY, photos } from '../core/theme/gridhandUi';
 
 export default function LoginScreen() {
@@ -22,7 +23,7 @@ export default function LoginScreen() {
     if (!email.trim() || !password) { setError(t('requiredFields')); return; }
     setLoading(true); setError('');
     try { await login(email.trim(), password); router.replace('/'); }
-    catch (e: any) { setError(e?.response?.data?.error?.message || t('loginError')); }
+    catch (e: any) { setError(apiErrorMessage(e, t('loginError'))); }
     finally { setLoading(false); }
   };
 
@@ -51,7 +52,14 @@ export default function LoginScreen() {
             <Pressable style={[styles.primary, loading && styles.disabled]} onPress={submit} disabled={loading}>
               {loading ? <ActivityIndicator color="#04140E" /> : <Text style={styles.primaryText}>{t('login')}</Text>}
             </Pressable>
-            <Pressable style={styles.secondary} onPress={() => router.back()}><Text style={styles.secondaryText}>{t('continueGuest')}</Text></Pressable>
+            <Pressable style={styles.secondary} onPress={() => router.replace('/signup')}>
+              <Text style={styles.secondaryText}>حساب ندارید؟ ثبت‌نام کنید</Text>
+            </Pressable>
+            <Pressable style={styles.diagnostic} onPress={() => router.push('/connection-test')}>
+              <Wifi size={15} color="#8CC8FF" />
+              <Text style={styles.diagnosticText}>تست اتصال به سرور (آدرس API و سلامت)</Text>
+            </Pressable>
+            <Pressable style={styles.secondary} onPress={() => router.replace('/')}><Text style={styles.guestText}>{t('continueGuest')}</Text></Pressable>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -73,6 +81,9 @@ const styles = StyleSheet.create({
   primary: { backgroundColor: '#18D68C', borderRadius: 16, padding: 16, alignItems: 'center', marginTop: 4 },
   disabled: { opacity: 0.6 },
   primaryText: { color: '#04140E', fontWeight: '800', fontSize: 16 },
-  secondary: { padding: 16, alignItems: 'center' },
+  secondary: { padding: 12, alignItems: 'center' },
   secondaryText: { color: '#8CC8FF', fontWeight: '700' },
+  diagnostic: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10 },
+  diagnosticText: { color: '#8CC8FF', fontSize: 11, fontWeight: '600' },
+  guestText: { color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
 });
