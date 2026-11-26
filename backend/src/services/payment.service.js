@@ -99,9 +99,11 @@ export async function createPaymentRequest(userId, payload = {}, req) {
 
   const requestedDays = Number(payload.durationDays);
   const durationDays =
-    Number.isInteger(plan.durationDays) && plan.durationDays > 0
-    ? plan.durationDays
-    : DEFAULT_DURATION_DAYS;
+    Number.isInteger(requestedDays) && requestedDays > 0
+      ? requestedDays
+      : Number(plan.durationDays) > 0
+        ? Number(plan.durationDays)
+        : DEFAULT_DURATION_DAYS;
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AppError(404, 'NOT_FOUND', 'کاربر یافت نشد');
