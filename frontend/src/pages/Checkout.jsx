@@ -27,11 +27,13 @@ export default function Checkout() {
   const navigate = useNavigate();
   const toast = useToast();
   const [plan, setPlan] = useState(null);
+  const [amountToman, setAmountToman] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
+
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -45,6 +47,7 @@ export default function Checkout() {
           setError('پلن مورد نظر یافت نشد.');
         } else {
           setPlan(found);
+          setAmountToman(String(found.priceToman));
         }
       })
       .catch(() => {
@@ -66,29 +69,71 @@ export default function Checkout() {
   }, [plan]);
 
   const handleConfirm = async () => {
-    if (submittingRef.current || !plan) return;
-    submittingRef.current = true;
-    setSubmitting(true);
-    try {
-      const idempotencyKey = getOrCreateIdempotencyKey(plan.id);
-      const result = await requestPayment({ planId: plan.id, idempotencyKey });
-      if (result?.paymentUrl) {
-        try {
-          sessionStorage.removeItem(`gh_idem_${plan.id}`);
-        } catch {}
-        window.location.assign(result.paymentUrl);
-      } else {
-        toast.error('خطا در ایجاد درخواست پرداخت.');
-        submittingRef.current = false;
-        setSubmitting(false);
-      }
-    } catch (err) {
-      try { sessionStorage.removeItem(`gh_idem_${plan.id}`); } catch {}
-      toast.error(err?.response?.data?.error?.message || 'خطا در ایجاد درخواست پرداخت.');
+  if (submittingRef.current || !plan) return;
+
+  const selectedAmount = Number(amountToman);
+  const minimumAmount = Number(plan.priceToman);
+
+  if (
+    !Number.isSafeInteger(selectedAmount) ||
+    selectedAmount <= 0
+  ) {
+    toast.error('لطفاً مبلغ معتبر وارد کنید.');
+    return;
+  }
+
+  if (selectedAmount < minimumAmount) {
+    toast.error(
+      `حداقل مبلغ پرداخت ${formatToman(minimumAmount)} است.`
+    );
+    return;
+  }
+
+  submittingRef.current = true;
+  setSubmitting(true);
+
+  try {
+    const idempotencyKey = getOrCreateIdempotencyKey(
+      plan.id,
+      selectedAmount
+    );
+
+    const result = await requestPayment({
+      planId: plan.id,
+      amountToman: selectedAmount,
+      idempotencyKey,
+    });
+
+    if (result?.paymentUrl) {
+      try {
+        sessionStorage.removeItem(
+          `gh_idem_${plan.id}_${selectedAmount}`
+        );
+      } catch {}
+
+      window.location.assign(result.paymentUrl);
+    } else {
+      toast.error('خطا در ایجاد درخواست پرداخت.');
       submittingRef.current = false;
       setSubmitting(false);
     }
-  };
+  } catch (err) {
+    try {
+      sessionStorage.removeItem(
+        `gh_idem_${plan.id}_${selectedAmount}`
+      );
+    } catch {}
+
+    toast.error(
+      err?.response?.data?.error?.message ||
+      'خطا در ایجاد درخواست پرداخت.'
+    );
+
+    submittingRef.current = false;
+    setSubmitting(false);
+  }
+};
+
 
   if (loading) {
     return (
@@ -118,10 +163,28 @@ export default function Checkout() {
         <h2>{plan.name}</h2>
         {plan.description && <p className="checkout-summary__desc">{plan.description}</p>}
         <dl className="checkout-summary__list">
-          <div>
-            <dt>مبلغ</dt>
-            <dd>{formatToman(plan.priceToman)}</dd>
-          </div>
+          
+        <div>
+          <dt>حداقل مبلغ پلن</dt>
+          <dd>{formatToman(plan.priceToman)}</dd>
+        </div>
+        <div>
+          <dt>مبلغ پرداختی شما (تومان)</dt>
+          <dd>
+            <input
+              type="number"
+              min={plan.priceToman}
+              step="1"
+              value={amountToman}
+              onChange={(event) => setAmountToman(event.target.value)}
+              disabled={submitting}
+              aria-label="مبلغ پرداختی به تومان"
+            />
+          </dd>
+        </div>
+        <p className="checkout-summary__desc">
+          اگر به نظرت این برنامه از مبلغ تعیین شده بیشتر ارزش داره با پرداخت بیشتر ما رو در بهبود برنامه یاری کنید
+        </p>
           <div>
             <dt>مدت اشتراک</dt>
             <dd>{plan.durationDays} روز</dd>
@@ -139,9 +202,13 @@ export default function Checkout() {
       </div>
 
       <Modal open={showModal} onClose={() => !submitting && setShowModal(false)} title="تأیید پرداخت">
-        <p>
-          آیا مبلغ <strong>{formatToman(plan.priceToman)}</strong> برای پلن <strong>{plan.name}</strong> را تأیید می‌کنید؟
-        </p>
+       <p>
+        آیا مبلغ{' '}
+        <strong>
+          {formatToman(Number(amountToman))}
+        </strong>{' '}
+        برای پلن <strong>{plan.name}</strong> را تأیید می‌کنید؟
+      </p>
         <div className="modal__actions">
           <button className="btn btn--outline" onClick={() => setShowModal(false)} disabled={submitting}>
             انصراف
