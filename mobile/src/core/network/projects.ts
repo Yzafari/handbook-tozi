@@ -242,3 +242,10 @@ export async function sendConversationMessage(
 
   return message as ConversationMessage;
 }
+export async function leaveProjectConversation(
+  projectId: string
+): Promise<void> {
+  await api.post(
+    `/projects/${encodeURIComponent(projectId)}/conversation/leave`
+  );
+}
