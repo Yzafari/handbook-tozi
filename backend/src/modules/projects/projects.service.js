@@ -244,7 +244,15 @@ export async function createProject({ data, userId }) {
         createdAt: true,
       },
     });
-
+    
+    await tx.conversationMember.create({
+  data: {
+    conversationId: conversation.id,
+    userId,
+    status: 'ACTIVE',
+      },
+   });
+    
     return {
       ...project,
       creatorRole: 'OWNER',
@@ -618,6 +626,31 @@ export async function addProjectMember({
         },
       });
 
+      const conversation = await tx.conversation.findUnique({
+  where: {
+    projectId,
+  },
+  select: {
+    id: true,
+  },
+});
+
+if (!conversation) {
+  throw new AppError(
+    409,
+    'PROJECT_CONVERSATION_NOT_FOUND',
+    'اتاق گفت‌وگوی این پروژه پیدا نشد. افزودن همکار انجام نشد؛ لطفاً موضوع را به مدیر سامانه گزارش دهید.'
+  );
+}
+
+await tx.conversationMember.create({
+  data: {
+    conversationId: conversation.id,
+    userId: targetUser.id,
+    status: 'ACTIVE',
+  },
+});
+      
       return membership;
     });
   } catch (error) {
@@ -672,4 +705,92 @@ export async function listProjectMembers({ projectId }) {
 
   return members;
 }
+export async function leaveProjectConversation({
+  projectId,
+  userId,
+}) {
+  if (!projectId || !userId) {
+    throw new AppError(
+      400,
+      'INVALID_CONVERSATION_REQUEST',
+      'اطلاعات پروژه یا کاربر ناقص است. صفحه را به‌روزرسانی و دوباره تلاش کنید.'
+    );
+  }
 
+  return prisma.$transaction(async (tx) => {
+    const project = await tx.project.findFirst({
+      where: {
+        id: projectId,
+        archivedAt: null,
+        members: {
+          some: {
+            userId,
+            status: 'ACTIVE',
+          },
+        },
+      },
+      select: {
+        id: true,
+        conversation: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      throw new AppError(
+        404,
+        'PROJECT_NOT_FOUND',
+        'پروژه پیدا نشد یا عضویت فعال شما در آن وجود ندارد. وضعیت عضویت خود را بررسی کنید.'
+      );
+    }
+
+    if (!project.conversation) {
+      throw new AppError(
+        409,
+        'PROJECT_CONVERSATION_NOT_FOUND',
+        'اتاق گفت‌وگوی این پروژه در دسترس نیست. لطفاً موضوع را به مدیر سامانه گزارش دهید.'
+      );
+    }
+
+    const membership = await tx.conversationMember.findUnique({
+      where: {
+        conversationId_userId: {
+          conversationId: project.conversation.id,
+          userId,
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!membership || membership.status !== 'ACTIVE') {
+      throw new AppError(
+        409,
+        'CONVERSATION_MEMBERSHIP_NOT_ACTIVE',
+        'شما در حال حاضر عضو فعال گفت‌وگوی این پروژه نیستید. نیازی به خروج مجدد وجود ندارد.'
+      );
+    }
+
+    await tx.conversationMember.update({
+      where: {
+        id: membership.id,
+      },
+      data: {
+        status: 'LEFT',
+        leftAt: new Date(),
+      },
+    });
+
+    return {
+      projectId,
+      conversationId: project.conversation.id,
+      status: 'LEFT',
+      projectMembershipPreserved: true,
+    };
+  });
+}
