@@ -26,6 +26,11 @@ enum ProjectMemberStatus {
   REMOVED
 }
 
+enum ConversationMemberStatus {
+  ACTIVE
+  LEFT
+}
+
 enum SubscriptionStatus {
   ACTIVE
   EXPIRED
@@ -79,6 +84,7 @@ model User {
   contractedProjects    Project[]       @relation("ProjectContractor")
   technicalLeadProjects Project[]       @relation("ProjectTechnicalLead")
   projectMemberships    ProjectMember[]
+  conversationMemberships ConversationMember[]
 }
 
 model Plan {
@@ -410,4 +416,22 @@ model Conversation {
   updatedAt DateTime @updatedAt
 
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  members   ConversationMember[]
+}
+model ConversationMember {
+  id             String                   @id @default(cuid())
+  conversationId String
+  userId         String
+  status         ConversationMemberStatus @default(ACTIVE)
+  joinedAt       DateTime                 @default(now())
+  leftAt         DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  conversation   Conversation              @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId, status])
+  @@index([conversationId, status])
 }
