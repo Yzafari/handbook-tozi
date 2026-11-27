@@ -85,6 +85,7 @@ model User {
   technicalLeadProjects Project[]       @relation("ProjectTechnicalLead")
   projectMemberships    ProjectMember[]
   conversationMemberships ConversationMember[]
+  sentConversationMessages ConversationMessage[] @relation("ConversationMessageSender")
 }
 
 model Plan {
@@ -417,6 +418,7 @@ model Conversation {
 
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   members   ConversationMember[]
+  messages ConversationMessage[]
 }
 model ConversationMember {
   id             String                   @id @default(cuid())
@@ -434,4 +436,32 @@ model ConversationMember {
   @@unique([conversationId, userId])
   @@index([userId, status])
   @@index([conversationId, status])
+}
+model ConversationMessage {
+  id             String       @id @default(cuid())
+  conversationId String
+  senderId       String
+  content        String       @db.Text
+
+  editedAt       DateTime?
+  deletedAt      DateTime?
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  conversation   Conversation @relation(
+    fields: [conversationId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  sender         User         @relation(
+    "ConversationMessageSender",
+    fields: [senderId],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  @@index([conversationId, createdAt, id])
+  @@index([senderId, createdAt])
 }
