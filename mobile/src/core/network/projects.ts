@@ -142,4 +142,103 @@ export async function getProjectDetail(
 
   return data as ProjectDetail;
 }
+export type ConversationMessage = {
+  id: string;
+  conversationId: string;
+  content: string | null;
+  createdAt: string;
+  editedAt: string | null;
+  deletedAt: string | null;
+  isDeleted?: boolean;
+  sender: {
+    id: string;
+    name: string | null;
+    avatarUrl: string | null;
+    jobRole: string | null;
+  };
+};
 
+export type ConversationMessagesPage = {
+  items: ConversationMessage[];
+  nextCursor: string | null;
+  hasMore: boolean;
+};
+
+export async function getConversationMessages(
+  projectId: string,
+  options?: {
+    cursor?: string;
+    limit?: number;
+  }
+): Promise<ConversationMessagesPage> {
+  const response = await api.get(
+    `/projects/${encodeURIComponent(projectId)}/conversation/messages`,
+    {
+      params: {
+        ...(options?.cursor ? { cursor: options.cursor } : {}),
+        limit: options?.limit ?? 20,
+      },
+    }
+  );
+
+  const data = response.data?.data;
+  const meta = response.data?.meta;
+
+  if (
+    !Array.isArray(data) ||
+    !meta ||
+    typeof meta.hasMore !== 'boolean' ||
+    !(
+      typeof meta.nextCursor === 'string' ||
+      meta.nextCursor === null
+    )
+  ) {
+    throw new Error(
+      'ساختار تاریخچه گفت‌وگو معتبر نیست. لطفاً دوباره تلاش کنید.'
+    );
+  }
+
+  return {
+    items: data as ConversationMessage[],
+    nextCursor: meta.nextCursor,
+    hasMore: meta.hasMore,
+  };
+}
+
+export async function sendConversationMessage(
+  projectId: string,
+  content: string
+): Promise<ConversationMessage> {
+  const normalizedContent = content.trim();
+
+  if (!normalizedContent) {
+    throw new Error('متن پیام نمی‌تواند خالی باشد.');
+  }
+
+  if (normalizedContent.length > 10000) {
+    throw new Error('متن پیام نباید بیشتر از ۱۰۰۰۰ کاراکتر باشد.');
+  }
+
+  const response = await api.post(
+    `/projects/${encodeURIComponent(projectId)}/conversation/messages`,
+    {
+      content: normalizedContent,
+    }
+  );
+
+  const message = response.data?.data;
+
+  if (
+    !message ||
+    typeof message.id !== 'string' ||
+    typeof message.conversationId !== 'string' ||
+    typeof message.createdAt !== 'string' ||
+    !message.sender
+  ) {
+    throw new Error(
+      'پیام ثبت شد اما اطلاعات دریافتی معتبر نیست. تاریخچه را تازه‌سازی کنید.'
+    );
+  }
+
+  return message as ConversationMessage;
+}
