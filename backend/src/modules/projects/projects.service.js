@@ -115,6 +115,42 @@ export async function createProject({ data, userId }) {
   const projectCode = createProjectCode();
 
   return prisma.$transaction(async (tx) => {
+      // Validate all optional project user assignments before creating records.
+    const assignedUserIds = [
+      data.projectManagerUserId,
+      data.employerUserId,
+      data.supervisorUserId,
+      data.contractorUserId,
+      data.technicalLeadUserId,
+    ].filter(Boolean);
+
+    const uniqueAssignedUserIds = [...new Set(assignedUserIds)];
+
+    if (uniqueAssignedUserIds.length > 0) {
+      const validUsers = await tx.user.findMany({
+        where: {
+          id: { in: uniqueAssignedUserIds },
+          isActive: true,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      const validUserIds = new Set(validUsers.map((user) => user.id));
+
+      const invalidUserIds = uniqueAssignedUserIds.filter(
+        (id) => !validUserIds.has(id)
+      );
+
+      if (invalidUserIds.length > 0) {
+        throw new AppError(
+          400,
+          'INVALID_PROJECT_USER',
+          'یکی از کاربران انتخاب‌شده وجود ندارد یا حساب او غیرفعال است'
+        );
+      }
+    }
     const project = await tx.project.create({
       data: {
         code: projectCode,
