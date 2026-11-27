@@ -39,7 +39,10 @@ export const detail = asyncHandler(async (req, res) => {
     userId: req.user.id,
   });
 
- export const leaveConversation = asyncHandler(async (req, res) => {
+  return ok(res, project);
+});
+
+export const leaveConversation = asyncHandler(async (req, res) => {
   const result = await service.leaveProjectConversation({
     projectId: req.params.id,
     userId: req.user.id,
@@ -51,7 +54,7 @@ export const detail = asyncHandler(async (req, res) => {
     'با موفقیت از گفت‌وگوی پروژه خارج شدید. عضویت و دسترسی‌های شما در خود پروژه همچنان برقرار است.'
   );
 });
-  
+
 export const addMember = asyncHandler(async (req, res) => {
   const member = await service.addProjectMember({
     projectId: req.params.id,
@@ -84,5 +87,35 @@ export const listMembers = asyncHandler(async (req, res) => {
   );
 });
 
-  return ok(res, project);
+export const sendConversationMessage = asyncHandler(async (req, res) => {
+  const message = await service.sendConversationMessage({
+    projectId: req.params.id,
+    userId: req.user.id,
+    content: req.body.content,
+  });
+
+  return created(
+    res,
+    message,
+    'پیام شما با موفقیت در گفت‌وگوی پروژه ثبت شد'
+  );
+});
+
+export const listConversationMessages = asyncHandler(async (req, res) => {
+  const result = await service.listConversationMessages({
+    projectId: req.params.id,
+    userId: req.user.id,
+    cursor: req.query.cursor,
+    limit: Number(req.query.limit || 20),
+  });
+
+  return ok(
+    res,
+    result.items,
+    undefined,
+    {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    }
+  );
 });
