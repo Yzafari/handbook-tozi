@@ -65,6 +65,25 @@ const idParamsSchema = z.object({
   id: z.string().trim().min(1).max(128),
 });
 
+
+const addMemberSchema = z.object({
+  userId: z.string().trim().min(1).optional(),
+  email: z.string().trim().email('آدرس ایمیل معتبر نیست').optional(),
+  roleKey: z.enum(['MANAGER', 'MEMBER', 'VIEWER']),
+}).superRefine((data, ctx) => {
+  const hasUserId = Boolean(data.userId);
+  const hasEmail = Boolean(data.email);
+
+  if (hasUserId === hasEmail) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['userId'],
+      message: 'برای افزودن همکار باید فقط شناسه کاربری یا ایمیل را وارد کنید',
+    });
+  }
+});
+
+
 router.use(authenticate);
 
 router.post(
@@ -84,6 +103,24 @@ router.get(
   validate({ params: idParamsSchema }),
   requireProjectPermission('project:read'),
   controller.detail
+);
+
+
+router.post(
+  '/:id/members',
+  validate({
+    params: idParamsSchema,
+    body: addMemberSchema,
+  }),
+  requireProjectPermission('project:manage_members'),
+  controller.addMember
+);
+
+router.get(
+  '/:id/members',
+  validate({ params: idParamsSchema }),
+  requireProjectPermission('project:manage_members'),
+  controller.listMembers
 );
 
 export default router;
