@@ -13,6 +13,7 @@ import {
 import { BriefcaseBusiness, Plus } from 'lucide-react-native';
 import { AppScreen } from '../features/common/AppScreen';
 import { useAuth } from '../core/auth/AuthContext';
+import { useRouter } from 'expo-router';
 import { readLocal, writeLocal } from '../features/common/localStore';
 import { useDesignTokens } from '../core/theme/useDesignTokens';
 import { getUi } from '../core/theme/gridhandUi';
@@ -60,6 +61,7 @@ function getStatusLabel(status: Project['status']): string {
 
 export default function ProjectsScreen() {
   const { user } = useAuth();
+  const router = useRouter();
   const { isDark, textAlign, rowDirection } = useDesignTokens();
   const ui = getUi(isDark);
 
@@ -336,16 +338,23 @@ export default function ProjectsScreen() {
       )}
 
       {projects.map((project) => (
-        <View
-          key={project.id}
-          style={[
-            styles.card,
-            {
-              backgroundColor: ui.surface,
-              borderColor: ui.border,
-            },
-          ]}
-        >
+                  <Pressable
+            key={project.id}
+            onPress={() =>
+              router.push({
+                pathname: '/project/[id]',
+                params: { id: project.id },
+              })
+            }
+            style={[
+              styles.card,
+              {
+                backgroundColor: ui.surface,
+                borderColor: ui.border,
+              },
+            ]}
+          >
+
           <Text
             style={[
               styles.title,
@@ -414,7 +423,7 @@ export default function ProjectsScreen() {
               {new Date(project.createdAt).toLocaleDateString('fa-IR')}
             </Text>
           </View>
-        </View>
+        </Pressable>
       ))}
     </AppScreen>
   );
