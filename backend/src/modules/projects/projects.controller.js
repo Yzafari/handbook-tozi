@@ -39,5 +39,37 @@ export const detail = asyncHandler(async (req, res) => {
     userId: req.user.id,
   });
 
+export const addMember = asyncHandler(async (req, res) => {
+  const member = await service.addProjectMember({
+    projectId: req.params.id,
+    userId: req.body.userId,
+    email: req.body.email,
+    roleKey: req.body.roleKey,
+    actor: {
+      userId: req.user.id,
+      roleKey: req.projectAccess.roleKey,
+      permissions: req.projectAccess.permissions,
+    },
+  });
+
+  return created(
+    res,
+    member,
+    'همکار با موفقیت به پروژه اضافه شد و عضویت او فعال است'
+  );
+});
+
+export const listMembers = asyncHandler(async (req, res) => {
+  const members = await service.listProjectMembers({
+    projectId: req.params.id,
+  });
+
+  return ok(
+    res,
+    members,
+    'فهرست اعضای فعال پروژه با موفقیت دریافت شد'
+  );
+});
+
   return ok(res, project);
 });
