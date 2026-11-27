@@ -64,7 +64,17 @@ const listQuerySchema = z.object({
 const idParamsSchema = z.object({
   id: z.string().trim().min(1).max(128),
 });
+const sendConversationMessageSchema = z.object({
+  content: z.string()
+    .trim()
+    .min(1, 'متن پیام نمی‌تواند خالی باشد')
+    .max(10000, 'متن پیام نمی‌تواند بیشتر از ۱۰۰۰۰ کاراکتر باشد'),
+});
 
+const conversationMessagesQuerySchema = z.object({
+  cursor: z.string().trim().min(1).max(128).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
 
 const addMemberSchema = z.object({
   userId: z.string().trim().min(1).optional(),
@@ -128,5 +138,24 @@ router.post(
   validate({ params: idParamsSchema }),
   requireProjectPermission('project:read'),
   controller.leaveConversation
+);
+router.post(
+  '/:id/conversation/messages',
+  validate({
+    params: idParamsSchema,
+    body: sendConversationMessageSchema,
+  }),
+  requireProjectPermission('conversation:read'),
+  controller.sendConversationMessage
+);
+
+router.get(
+  '/:id/conversation/messages',
+  validate({
+    params: idParamsSchema,
+    query: conversationMessagesQuerySchema,
+  }),
+  requireProjectPermission('conversation:read'),
+  controller.listConversationMessages
 );
 export default router;
