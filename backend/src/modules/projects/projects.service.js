@@ -1,0 +1,380 @@
+import { randomUUID } from 'node:crypto';
+import prisma from '../../config/database.js';
+import { AppError } from '../../utils/response.util.js';
+
+const PROJECT_SELECT = {
+  id: true,
+  code: true,
+  name: true,
+  description: true,
+  type: true,
+  status: true,
+  startDate: true,
+  expectedEndDate: true,
+  organizationName: true,
+  employerName: true,
+  contractorName: true,
+  createdById: true,
+  projectManagerUserId: true,
+  employerUserId: true,
+  supervisorUserId: true,
+  contractorUserId: true,
+  technicalLeadUserId: true,
+  province: true,
+  county: true,
+  address: true,
+  latitude: true,
+  longitude: true,
+  archivedAt: true,
+  createdAt: true,
+  updatedAt: true,
+};
+
+const DEFAULT_PROJECT_ROLES = [
+  {
+    key: 'OWNER',
+    name: 'مالک پروژه',
+    permissions: [
+      'project:read',
+      'project:update',
+      'project:archive',
+      'project:manage_members',
+      'project:manage_roles',
+      'workspace:read',
+      'conversation:read',
+    ],
+  },
+  {
+    key: 'MANAGER',
+    name: 'مدیر پروژه',
+    permissions: [
+      'project:read',
+      'project:update',
+      'project:manage_members',
+      'workspace:read',
+      'conversation:read',
+    ],
+  },
+  {
+    key: 'MEMBER',
+    name: 'عضو پروژه',
+    permissions: [
+      'project:read',
+      'workspace:read',
+      'conversation:read',
+    ],
+  },
+  {
+    key: 'VIEWER',
+    name: 'مشاهده‌گر پروژه',
+    permissions: [
+      'project:read',
+      'workspace:read',
+      'conversation:read',
+    ],
+  },
+];
+
+function createProjectCode() {
+  return `PRJ-${randomUUID().replaceAll('-', '').toUpperCase()}`;
+}
+
+function normalizeOptionalText(value) {
+  if (value === undefined || value === null) return null;
+
+  const normalized = String(value).trim();
+
+  return normalized.length ? normalized : null;
+}
+
+export async function createProject({ data, userId }) {
+  if (!userId) {
+    throw new AppError(
+      401,
+      'UNAUTHORIZED',
+      'برای ایجاد پروژه باید وارد حساب کاربری شوید'
+    );
+  }
+
+  const creator = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      isActive: true,
+    },
+  });
+
+  if (!creator || creator.isActive === false) {
+    throw new AppError(
+      401,
+      'INVALID_USER',
+      'حساب کاربری معتبر نیست یا غیرفعال شده است'
+    );
+  }
+
+  const projectCode = createProjectCode();
+
+  return prisma.$transaction(async (tx) => {
+    const project = await tx.project.create({
+      data: {
+        code: projectCode,
+        name: data.name.trim(),
+        description: normalizeOptionalText(data.description),
+        type: data.type.trim(),
+
+        startDate: data.startDate ?? null,
+        expectedEndDate: data.expectedEndDate ?? null,
+
+        organizationName: normalizeOptionalText(data.organizationName),
+        employerName: normalizeOptionalText(data.employerName),
+        contractorName: normalizeOptionalText(data.contractorName),
+
+        createdById: userId,
+
+        projectManagerUserId: data.projectManagerUserId ?? null,
+        employerUserId: data.employerUserId ?? null,
+        supervisorUserId: data.supervisorUserId ?? null,
+        contractorUserId: data.contractorUserId ?? null,
+        technicalLeadUserId: data.technicalLeadUserId ?? null,
+
+        province: normalizeOptionalText(data.province),
+        county: normalizeOptionalText(data.county),
+        address: normalizeOptionalText(data.address),
+
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
+      },
+      select: {
+        id: true,
+        ...PROJECT_SELECT,
+      },
+    });
+
+    const createdRoles = {};
+
+    for (const roleDefinition of DEFAULT_PROJECT_ROLES) {
+      const role = await tx.projectRole.create({
+        data: {
+          projectId: project.id,
+          key: roleDefinition.key,
+          name: roleDefinition.name,
+          isSystem: true,
+        },
+        select: {
+          id: true,
+          key: true,
+        },
+      });
+
+      createdRoles[role.key] = role.id;
+
+      await tx.projectRolePermission.createMany({
+        data: roleDefinition.permissions.map((permission) => ({
+          projectRoleId: role.id,
+          permission,
+        })),
+      });
+    }
+
+    await tx.projectMember.create({
+      data: {
+        projectId: project.id,
+        userId,
+        roleId: createdRoles.OWNER,
+        status: 'ACTIVE',
+      },
+    });
+
+    const workspace = await tx.projectWorkspace.create({
+      data: {
+        projectId: project.id,
+      },
+      select: {
+        id: true,
+        projectId: true,
+        createdAt: true,
+      },
+    });
+
+    const conversation = await tx.conversation.create({
+      data: {
+        projectId: project.id,
+        title: `گفت‌وگوی پروژه ${project.name}`,
+      },
+      select: {
+        id: true,
+        projectId: true,
+        title: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      ...project,
+      creatorRole: 'OWNER',
+      workspace,
+      conversation,
+    };
+  });
+}
+
+export async function listProjects({ userId, cursor, limit = 20 }) {
+  const items = await prisma.project.findMany({
+    where: {
+      archivedAt: null,
+      members: {
+        some: {
+          userId,
+          status: 'ACTIVE',
+        },
+      },
+    },
+    orderBy: [
+      { updatedAt: 'desc' },
+      { id: 'desc' },
+    ],
+    ...(cursor
+      ? {
+          cursor: { id: cursor },
+          skip: 1,
+        }
+      : {}),
+    take: limit + 1,
+    select: {
+      ...PROJECT_SELECT,
+      workspace: {
+        select: {
+          id: true,
+        },
+      },
+      conversation: {
+        select: {
+          id: true,
+          title: true,
+        },
+      },
+      _count: {
+        select: {
+          members: {
+            where: {
+              status: 'ACTIVE',
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const hasMore = items.length > limit;
+  const page = hasMore ? items.slice(0, limit) : items;
+
+  return {
+    items: page.map((project) => ({
+      ...project,
+      activeMemberCount: project._count.members,
+      _count: undefined,
+    })),
+    nextCursor: hasMore ? page.at(-1).id : null,
+    hasMore,
+  };
+}
+
+export async function getProjectDetail({ projectId, userId }) {
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      archivedAt: null,
+      members: {
+        some: {
+          userId,
+          status: 'ACTIVE',
+        },
+      },
+    },
+    select: {
+      ...PROJECT_SELECT,
+
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+
+      members: {
+        where: {
+          status: 'ACTIVE',
+        },
+        orderBy: {
+          joinedAt: 'asc',
+        },
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          joinedAt: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatarUrl: true,
+              jobRole: true,
+            },
+          },
+          projectRole: {
+            select: {
+              id: true,
+              key: true,
+              name: true,
+            },
+          },
+        },
+      },
+
+      workspace: {
+        select: {
+          id: true,
+          createdAt: true,
+        },
+      },
+
+      conversation: {
+        select: {
+          id: true,
+          title: true,
+          createdAt: true,
+        },
+      },
+
+      roles: {
+        select: {
+          id: true,
+          key: true,
+          name: true,
+          isSystem: true,
+          permissions: {
+            select: {
+              permission: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    throw new AppError(
+      404,
+      'PROJECT_NOT_FOUND',
+      'پروژه یافت نشد یا شما عضو فعال آن نیستید'
+    );
+  }
+
+  return {
+    ...project,
+    roles: project.roles.map((role) => ({
+      ...role,
+      permissions: role.permissions.map((item) => item.permission),
+    })),
+  };
+}
