@@ -87,6 +87,14 @@ function normalizeOptionalText(value) {
   return normalized.length ? normalized : null;
 }
 
+function normalizeLimit(value, fallback = 20, max = 100) {
+  const num = Number(value);
+
+  if (!Number.isFinite(num) || num <= 0) return fallback;
+
+  return Math.min(Math.floor(num), max);
+}
+
 export async function createProject({ data, userId }) {
   if (!userId) {
     throw new AppError(
@@ -115,7 +123,7 @@ export async function createProject({ data, userId }) {
   const projectCode = createProjectCode();
 
   return prisma.$transaction(async (tx) => {
-      // Validate all optional project user assignments before creating records.
+    // Validate all optional project user assignments before creating records.
     const assignedUserIds = [
       data.projectManagerUserId,
       data.employerUserId,
@@ -151,6 +159,7 @@ export async function createProject({ data, userId }) {
         );
       }
     }
+
     const project = await tx.project.create({
       data: {
         code: projectCode,
@@ -180,10 +189,7 @@ export async function createProject({ data, userId }) {
         latitude: data.latitude ?? null,
         longitude: data.longitude ?? null,
       },
-      select: {
-        id: true,
-        ...PROJECT_SELECT,
-      },
+      select: PROJECT_SELECT,
     });
 
     const createdRoles = {};
@@ -244,15 +250,15 @@ export async function createProject({ data, userId }) {
         createdAt: true,
       },
     });
-    
+
     await tx.conversationMember.create({
-  data: {
-    conversationId: conversation.id,
-    userId,
-    status: 'ACTIVE',
+      data: {
+        conversationId: conversation.id,
+        userId,
+        status: 'ACTIVE',
       },
-   });
-    
+    });
+
     return {
       ...project,
       creatorRole: 'OWNER',
@@ -262,8 +268,10 @@ export async function createProject({ data, userId }) {
   });
 }
 
-export async function listProjects({ userId, cursor, limit = 20 }) {
-  const items = await prisma.project.findMany({
+export async function listProjects({ userId, cursor, limit }) {
+  const take = normalizeLimit(limit);
+
+  const projects = await prisma.project.findMany({
     where: {
       archivedAt: null,
       members: {
@@ -283,7 +291,7 @@ export async function listProjects({ userId, cursor, limit = 20 }) {
           skip: 1,
         }
       : {}),
-    take: limit + 1,
+    take: take + 1,
     select: {
       ...PROJECT_SELECT,
       workspace: {
@@ -309,18 +317,11 @@ export async function listProjects({ userId, cursor, limit = 20 }) {
     },
   });
 
-  const hasMore = items.length > limit;
-  const page = hasMore ? items.slice(0, limit) : items;
+  const hasMore = projects.length > take;
+  const items = hasMore ? projects.slice(0, take) : projects;
+  const nextCursor = hasMore ? items[items.length - 1].id : null;
 
-  return {
-    items: page.map((project) => ({
-      ...project,
-      activeMemberCount: project._count.members,
-      _count: undefined,
-    })),
-    nextCursor: hasMore ? page.at(-1).id : null,
-    hasMore,
-  };
+  return { items, nextCursor, hasMore };
 }
 
 export async function getProjectDetail({ projectId, userId }) {
@@ -627,30 +628,30 @@ export async function addProjectMember({
       });
 
       const conversation = await tx.conversation.findUnique({
-  where: {
-    projectId,
-  },
-  select: {
-    id: true,
-  },
-});
+        where: {
+          projectId,
+        },
+        select: {
+          id: true,
+        },
+      });
 
-if (!conversation) {
-  throw new AppError(
-    409,
-    'PROJECT_CONVERSATION_NOT_FOUND',
-    'اتاق گفت‌وگوی این پروژه پیدا نشد. افزودن همکار انجام نشد؛ لطفاً موضوع را به مدیر سامانه گزارش دهید.'
-  );
-}
+      if (!conversation) {
+        throw new AppError(
+          409,
+          'PROJECT_CONVERSATION_NOT_FOUND',
+          'اتاق گفت‌وگوی این پروژه پیدا نشد. افزودن همکار انجام نشد؛ لطفاً موضوع را به مدیر سامانه گزارش دهید.'
+        );
+      }
 
-await tx.conversationMember.create({
-  data: {
-    conversationId: conversation.id,
-    userId: targetUser.id,
-    status: 'ACTIVE',
-  },
-});
-      
+      await tx.conversationMember.create({
+        data: {
+          conversationId: conversation.id,
+          userId: targetUser.id,
+          status: 'ACTIVE',
+        },
+      });
+
       return membership;
     });
   } catch (error) {
@@ -659,10 +660,11 @@ await tx.conversationMember.create({
     }
 
     if (error?.code === 'P2002') {
+      // P2002 ممکن است برای ProjectMember یا ConversationMember رخ دهد.
       throw new AppError(
         409,
-        'PROJECT_MEMBER_ALREADY_EXISTS',
-        'این همکار قبلاً به پروژه اضافه شده است. فهرست اعضای پروژه را بررسی کنید.'
+        'PROJECT_MEMBER_CONFLICT',
+        'افزودن همکار با تداخل داده مواجه شد. لطفاً فهرست اعضای پروژه و گفت‌وگو را بررسی و دوباره تلاش کنید.'
       );
     }
 
@@ -705,10 +707,8 @@ export async function listProjectMembers({ projectId }) {
 
   return members;
 }
-export async function leaveProjectConversation({
-  projectId,
-  userId,
-}) {
+
+export async function leaveProjectConversation({ projectId, userId }) {
   if (!projectId || !userId) {
     throw new AppError(
       400,
@@ -794,11 +794,8 @@ export async function leaveProjectConversation({
     };
   });
 }
-async function getActiveConversationAccess({
-  db,
-  projectId,
-  userId,
-}) {
+
+async function getActiveConversationAccess({ db, projectId, userId }) {
   const project = await db.project.findFirst({
     where: {
       id: projectId,
@@ -856,11 +853,8 @@ async function getActiveConversationAccess({
 
   return project.conversation.id;
 }
-export async function sendConversationMessage({
-  projectId,
-  userId,
-  content,
-}) {
+
+export async function sendConversationMessage({ projectId, userId, content }) {
   const normalizedContent = String(content ?? '').trim();
 
   if (!normalizedContent || normalizedContent.length > 10000) {
@@ -905,12 +899,15 @@ export async function sendConversationMessage({
     return message;
   });
 }
+
 export async function listConversationMessages({
   projectId,
   userId,
   cursor,
-  limit = 20,
+  limit,
 }) {
+  const take = normalizeLimit(limit);
+
   const conversationId = await getActiveConversationAccess({
     db: prisma,
     projectId,
@@ -945,16 +942,10 @@ export async function listConversationMessages({
     ...(cursorMessage
       ? {
           OR: [
-            {
-              createdAt: {
-                lt: cursorMessage.createdAt,
-              },
-            },
+            { createdAt: { lt: cursorMessage.createdAt } },
             {
               createdAt: cursorMessage.createdAt,
-              id: {
-                lt: cursorMessage.id,
-              },
+              id: { lt: cursorMessage.id },
             },
           ],
         }
@@ -964,14 +955,10 @@ export async function listConversationMessages({
   const messages = await prisma.conversationMessage.findMany({
     where,
     orderBy: [
-      {
-        createdAt: 'desc',
-      },
-      {
-        id: 'desc',
-      },
+      { createdAt: 'desc' },
+      { id: 'desc' },
     ],
-    take: limit + 1,
+    take: take + 1,
     select: {
       id: true,
       conversationId: true,
@@ -990,10 +977,14 @@ export async function listConversationMessages({
     },
   });
 
-  const hasMore = messages.length > limit;
-  const page = hasMore ? messages.slice(0, limit) : messages;
+  const hasMore = messages.length > take;
+  const page = hasMore ? messages.slice(0, take) : messages;
 
-  const chronologicalMessages = page
+  // شناسهٔ قدیمی‌ترین پیام همین صفحه، پیش از معکوس‌سازی محاسبه می‌شود.
+  const nextCursor = hasMore ? page[page.length - 1].id : null;
+
+  const items = page
+    .slice()
     .reverse()
     .map((message) => ({
       ...message,
@@ -1001,9 +992,5 @@ export async function listConversationMessages({
       isDeleted: Boolean(message.deletedAt),
     }));
 
-  return {
-    items: chronologicalMessages,
-    nextCursor: hasMore ? page[0].id : null,
-    hasMore,
-  };
+  return { items, nextCursor, hasMore };
 }
