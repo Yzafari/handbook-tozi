@@ -12,6 +12,19 @@ enum Role {
   ADMIN
   SUPER_ADMIN
 }
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+enum ProjectMemberStatus {
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
 
 enum SubscriptionStatus {
   ACTIVE
@@ -59,6 +72,13 @@ model User {
   syncOperations SyncOperation[]
   ocrJobs       OcrJob[]
   calculationHistory CalculationHistory[]
+  createdProjects       Project[]       @relation("ProjectCreator")
+  managedProjects       Project[]       @relation("ProjectManager")
+  employerProjects      Project[]       @relation("ProjectEmployer")
+  supervisedProjects    Project[]       @relation("ProjectSupervisor")
+  contractedProjects    Project[]       @relation("ProjectContractor")
+  technicalLeadProjects Project[]       @relation("ProjectTechnicalLead")
+  projectMemberships    ProjectMember[]
 }
 
 model Plan {
@@ -273,4 +293,121 @@ model CalculationHistory {
 
   @@unique([userId, clientId])
   @@index([userId, createdAt])
+}
+model Project {
+  id                    String        @id @default(cuid())
+  code                  String        @unique
+  name                  String
+  description           String?
+  type                  String
+  status                ProjectStatus @default(PLANNING)
+
+  startDate             DateTime?
+  expectedEndDate       DateTime?
+
+  organizationName      String?
+  employerName          String?
+  contractorName        String?
+
+  createdById           String
+  projectManagerUserId  String?
+  employerUserId        String?
+  supervisorUserId      String?
+  contractorUserId      String?
+  technicalLeadUserId   String?
+
+  province              String?
+  county                String?
+  address               String?
+  latitude              Float?
+  longitude             Float?
+
+  archivedAt            DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  createdBy             User          @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  projectManager        User?         @relation("ProjectManager", fields: [projectManagerUserId], references: [id], onDelete: SetNull)
+  employer              User?         @relation("ProjectEmployer", fields: [employerUserId], references: [id], onDelete: SetNull)
+  supervisor            User?         @relation("ProjectSupervisor", fields: [supervisorUserId], references: [id], onDelete: SetNull)
+  contractor            User?         @relation("ProjectContractor", fields: [contractorUserId], references: [id], onDelete: SetNull)
+  technicalLead         User?         @relation("ProjectTechnicalLead", fields: [technicalLeadUserId], references: [id], onDelete: SetNull)
+
+  members               ProjectMember[]
+  roles                 ProjectRole[]
+  workspace             ProjectWorkspace?
+  conversation          Conversation?
+
+  @@index([createdById, status, createdAt])
+  @@index([projectManagerUserId, status])
+  @@index([status, updatedAt])
+  @@index([province, county])
+}
+
+model ProjectMember {
+  id          String              @id @default(cuid())
+  projectId   String
+  userId      String
+  roleId      String
+  status      ProjectMemberStatus @default(ACTIVE)
+  joinedAt    DateTime            @default(now())
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user        User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  projectRole ProjectRole         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, userId])
+  @@index([userId, status])
+  @@index([projectId, status])
+  @@index([roleId])
+}
+
+model ProjectRole {
+  id          String                 @id @default(cuid())
+  projectId   String
+  key         String
+  name        String
+  isSystem    Boolean                @default(false)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  project     Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  members     ProjectMember[]
+  permissions ProjectRolePermission[]
+
+  @@unique([projectId, key])
+  @@index([projectId, isSystem])
+}
+
+model ProjectRolePermission {
+  id           String      @id @default(cuid())
+  projectRoleId String
+  permission   String
+  createdAt    DateTime    @default(now())
+
+  projectRole  ProjectRole @relation(fields: [projectRoleId], references: [id], onDelete: Cascade)
+
+  @@unique([projectRoleId, permission])
+  @@index([permission])
+}
+
+model ProjectWorkspace {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
