@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "name": "projects",
+  "version": "1.0.0",
+  "basePath": "/projects",
+  "dependencies": [],
+  "requires": [
+    "auth",
+    "postgresql"
+  ]
+}
