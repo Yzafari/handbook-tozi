@@ -8,10 +8,23 @@ import {
   TextInput,
   View,
 } from 'react-native';
-
+import {
+  getProjectDetail,
+  getConversationMessages,
+  sendConversationMessage,
+  leaveProjectConversation,
+} from '../../core/network/projects';
 import { useLocalSearchParams } from 'expo-router';
 import { AlertCircle, Users, ShieldCheck, MessageCircle, BriefcaseBusiness } from 'lucide-react-native';
-
+import {
+  Alert,
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { AppScreen, Card, SectionTitle } from '../../features/common/AppScreen';
 import { useDesignTokens } from '../../core/theme/useDesignTokens';
 import { getUi } from '../../core/theme/gridhandUi';
@@ -69,7 +82,8 @@ export default function ProjectDetailScreen() {
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
+  const [conversationLeft, setConversationLeft] = useState(false);
+  const [leavingConversation, setLeavingConversation] = useState(false);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [messageDraft, setMessageDraft] = useState('');
   const [messagesLoading, setMessagesLoading] = useState(true);
@@ -130,7 +144,9 @@ export default function ProjectDetailScreen() {
       }
     }
   }, [id, isStale]);
-
+   if (conversationLeft) {
+  return;
+    }
   const loadConversationMessages = useCallback(async () => {
     if (!id || typeof id !== 'string') {
       return;
@@ -207,7 +223,53 @@ export default function ProjectDetailScreen() {
       }
     }
   }, [id, nextMessageCursor, hasMoreMessages, olderMessagesLoading, isStale]);
-
+      const handleLeaveConversation = useCallback(() => {
+      if (!id || typeof id !== 'string' || leavingConversation) {
+        return;
+      }
+    
+      Alert.alert(
+        'خروج از گفت‌وگوی پروژه',
+        'آیا مطمئن هستید؟ با خروج از گفت‌وگو، دیگر پیام‌های این اتاق را دریافت نمی‌کنید و نمی‌توانید پیام ارسال کنید. عضویت و مجوزهای شما در خود پروژه باقی می‌ماند.',
+        [
+          {
+            text: 'انصراف',
+            style: 'cancel',
+          },
+          {
+            text: 'خروج از گفت‌وگو',
+            style: 'destructive',
+            onPress: async () => {
+              setLeavingConversation(true);
+              setConversationError('');
+    
+              try {
+                await leaveProjectConversation(id);
+    
+                setConversationLeft(true);
+                setMessages([]);
+                setMessageDraft('');
+    
+                Alert.alert(
+                  'خروج موفق',
+                  'از گفت‌وگوی پروژه خارج شدید. عضویت و دسترسی‌های شما در خود پروژه همچنان برقرار است.'
+                );
+              } catch (err) {
+                setConversationError(errorMessage(err));
+              } finally {
+                setLeavingConversation(false);
+              }
+            },
+          },
+        ]
+      );
+}, [id, leavingConversation]);
+  if (conversationLeft) {
+  setConversationError(
+    'شما از گفت‌وگوی این پروژه خارج شده‌اید. برای دسترسی مجدد با مدیر پروژه تماس بگیرید.'
+     );
+     return;
+   }  
   const handleSendMessage = useCallback(async () => {
     if (!id || typeof id !== 'string') {
       setConversationError(
@@ -593,6 +655,51 @@ export default function ProjectDetailScreen() {
             )}
 
             <View
+              {conversationLeft ? (
+                <View
+                  style={[
+                    styles.conversationError,
+                    { backgroundColor: ui.accentSoft },
+                  ]}
+                >
+                  <Text style={{ color: ui.text, textAlign }}>
+                    شما از گفت‌وگوی این پروژه خارج شده‌اید.
+                  </Text>
+              
+                  <Text
+                    style={{
+                      color: ui.muted,
+                      textAlign,
+                      marginTop: 5,
+                      fontSize: 11,
+                    }}
+                  >
+                    عضویت و مجوزهای شما در پروژه همچنان برقرار است.
+                    برای دسترسی مجدد با مدیر پروژه تماس بگیرید.
+                  </Text>
+                </View>
+              ) : (
+                <Pressable
+                  disabled={leavingConversation}
+                  onPress={handleLeaveConversation}
+                  style={[
+                    styles.loadOlder,
+                    {
+                      backgroundColor: ui.accentSoft,
+                      marginTop: 12,
+                      opacity: leavingConversation ? 0.5 : 1,
+                    },
+                  ]}
+                >
+                  {leavingConversation ? (
+                    <ActivityIndicator size="small" color={ui.accent} />
+                  ) : (
+                    <Text style={{ color: ui.danger, fontWeight: '800' }}>
+                      خروج از گفت‌وگو
+                    </Text>
+                  )}
+                </Pressable>
+              )}
               style={[
                 styles.messageComposer,
                 { borderTopColor: ui.border, flexDirection: rowDirection },
@@ -605,7 +712,7 @@ export default function ProjectDetailScreen() {
                 placeholderTextColor={ui.muted}
                 multiline
                 maxLength={10000}
-                editable={!messageSending}
+                editable={!messageSending && !conversationLeft}
                 textAlign={textAlign}
                 style={[
                   styles.messageInput,
@@ -618,7 +725,11 @@ export default function ProjectDetailScreen() {
               />
 
               <Pressable
-                disabled={!canSend}
+               disabled={
+                conversationLeft ||
+                messageSending ||
+                !messageDraft.trim()
+                  }
                 onPress={() => void handleSendMessage()}
                 style={[
                   styles.sendButton,
