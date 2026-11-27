@@ -794,3 +794,216 @@ export async function leaveProjectConversation({
     };
   });
 }
+async function getActiveConversationAccess({
+  db,
+  projectId,
+  userId,
+}) {
+  const project = await db.project.findFirst({
+    where: {
+      id: projectId,
+      archivedAt: null,
+      members: {
+        some: {
+          userId,
+          status: 'ACTIVE',
+        },
+      },
+    },
+    select: {
+      id: true,
+      conversation: {
+        select: {
+          id: true,
+          members: {
+            where: {
+              userId,
+              status: 'ACTIVE',
+            },
+            take: 1,
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    throw new AppError(
+      404,
+      'PROJECT_NOT_FOUND',
+      'پروژه پیدا نشد یا عضویت فعال شما در آن وجود ندارد. وضعیت عضویت خود را بررسی کنید.'
+    );
+  }
+
+  if (!project.conversation) {
+    throw new AppError(
+      409,
+      'PROJECT_CONVERSATION_NOT_FOUND',
+      'اتاق گفت‌وگوی این پروژه در دسترس نیست. لطفاً موضوع را به مدیر سامانه گزارش دهید.'
+    );
+  }
+
+  if (project.conversation.members.length === 0) {
+    throw new AppError(
+      403,
+      'CONVERSATION_MEMBERSHIP_REQUIRED',
+      'شما عضو فعال گفت‌وگوی این پروژه نیستید یا قبلاً از آن خارج شده‌اید. برای دسترسی مجدد با مدیر پروژه تماس بگیرید.'
+    );
+  }
+
+  return project.conversation.id;
+}
+export async function sendConversationMessage({
+  projectId,
+  userId,
+  content,
+}) {
+  const normalizedContent = String(content ?? '').trim();
+
+  if (!normalizedContent || normalizedContent.length > 10000) {
+    throw new AppError(
+      400,
+      'INVALID_MESSAGE_CONTENT',
+      'متن پیام خالی یا بیش از حد طولانی است. پیام را اصلاح و دوباره ارسال کنید.'
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const conversationId = await getActiveConversationAccess({
+      db: tx,
+      projectId,
+      userId,
+    });
+
+    const message = await tx.conversationMessage.create({
+      data: {
+        conversationId,
+        senderId: userId,
+        content: normalizedContent,
+      },
+      select: {
+        id: true,
+        conversationId: true,
+        content: true,
+        createdAt: true,
+        editedAt: true,
+        deletedAt: true,
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+            jobRole: true,
+          },
+        },
+      },
+    });
+
+    return message;
+  });
+}
+export async function listConversationMessages({
+  projectId,
+  userId,
+  cursor,
+  limit = 20,
+}) {
+  const conversationId = await getActiveConversationAccess({
+    db: prisma,
+    projectId,
+    userId,
+  });
+
+  let cursorMessage = null;
+
+  if (cursor) {
+    cursorMessage = await prisma.conversationMessage.findFirst({
+      where: {
+        id: cursor,
+        conversationId,
+      },
+      select: {
+        id: true,
+        createdAt: true,
+      },
+    });
+
+    if (!cursorMessage) {
+      throw new AppError(
+        400,
+        'INVALID_MESSAGE_CURSOR',
+        'نقطه ادامه تاریخچه پیام معتبر نیست. صفحه گفت‌وگو را تازه‌سازی و دوباره تلاش کنید.'
+      );
+    }
+  }
+
+  const where = {
+    conversationId,
+    ...(cursorMessage
+      ? {
+          OR: [
+            {
+              createdAt: {
+                lt: cursorMessage.createdAt,
+              },
+            },
+            {
+              createdAt: cursorMessage.createdAt,
+              id: {
+                lt: cursorMessage.id,
+              },
+            },
+          ],
+        }
+      : {}),
+  };
+
+  const messages = await prisma.conversationMessage.findMany({
+    where,
+    orderBy: [
+      {
+        createdAt: 'desc',
+      },
+      {
+        id: 'desc',
+      },
+    ],
+    take: limit + 1,
+    select: {
+      id: true,
+      conversationId: true,
+      content: true,
+      createdAt: true,
+      editedAt: true,
+      deletedAt: true,
+      sender: {
+        select: {
+          id: true,
+          name: true,
+          avatarUrl: true,
+          jobRole: true,
+        },
+      },
+    },
+  });
+
+  const hasMore = messages.length > limit;
+  const page = hasMore ? messages.slice(0, limit) : messages;
+
+  const chronologicalMessages = page
+    .reverse()
+    .map((message) => ({
+      ...message,
+      content: message.deletedAt ? null : message.content,
+      isDeleted: Boolean(message.deletedAt),
+    }));
+
+  return {
+    items: chronologicalMessages,
+    nextCursor: hasMore ? page[0].id : null,
+    hasMore,
+  };
+}
