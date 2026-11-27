@@ -56,3 +56,69 @@ export async function createProject(
 
   return readProject(data);
 }
+
+export type ProjectMember = {
+  id: string;
+  userId: string;
+  status: string;
+  joinedAt: string;
+  user: {
+    id: string;
+    name: string | null;
+    avatarUrl: string | null;
+    jobRole: string | null;
+  };
+  projectRole: {
+    id: string;
+    key: string;
+    name: string;
+  };
+};
+
+export type ProjectRole = {
+  id: string;
+  key: string;
+  name: string;
+  isSystem: boolean;
+  permissions: string[];
+};
+
+export type ProjectDetail = Project & {
+  createdBy: {
+    id: string;
+    name: string | null;
+  };
+  members: ProjectMember[];
+  workspace: {
+    id: string;
+    createdAt: string;
+  } | null;
+  conversation: {
+    id: string;
+    title: string;
+    createdAt: string;
+  } | null;
+  roles: ProjectRole[];
+};
+
+export async function getProjectDetail(
+  projectId: string
+): Promise<ProjectDetail> {
+  const response = await api.get(
+    `/projects/${encodeURIComponent(projectId)}`
+  );
+
+  const data = response.data?.data;
+
+  if (
+    !data ||
+    typeof data.id !== 'string' ||
+    !Array.isArray(data.members) ||
+    !Array.isArray(data.roles)
+  ) {
+    throw new Error('ساختار جزئیات پروژه دریافتی از سرور معتبر نیست');
+  }
+
+  return data as ProjectDetail;
+}
+
