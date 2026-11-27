@@ -15,6 +15,27 @@ export type Project = {
   description: string | null;
   type: string;
   status: ProjectStatus;
+
+  startDate?: string | null;
+  expectedEndDate?: string | null;
+
+  organizationName?: string | null;
+  employerName?: string | null;
+  contractorName?: string | null;
+
+  createdById?: string;
+  projectManagerUserId?: string | null;
+  employerUserId?: string | null;
+  supervisorUserId?: string | null;
+  contractorUserId?: string | null;
+  technicalLeadUserId?: string | null;
+
+  province?: string | null;
+  county?: string | null;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+
   createdAt: string;
   updatedAt: string;
 };
