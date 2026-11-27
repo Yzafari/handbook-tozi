@@ -123,4 +123,10 @@ router.get(
   controller.listMembers
 );
 
+router.post(
+  '/:id/conversation/leave',
+  validate({ params: idParamsSchema }),
+  requireProjectPermission('project:read'),
+  controller.leaveConversation
+);
 export default router;
