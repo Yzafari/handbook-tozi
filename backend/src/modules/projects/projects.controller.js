@@ -39,6 +39,19 @@ export const detail = asyncHandler(async (req, res) => {
     userId: req.user.id,
   });
 
+ export const leaveConversation = asyncHandler(async (req, res) => {
+  const result = await service.leaveProjectConversation({
+    projectId: req.params.id,
+    userId: req.user.id,
+  });
+
+  return ok(
+    res,
+    result,
+    'با موفقیت از گفت‌وگوی پروژه خارج شدید. عضویت و دسترسی‌های شما در خود پروژه همچنان برقرار است.'
+  );
+});
+  
 export const addMember = asyncHandler(async (req, res) => {
   const member = await service.addProjectMember({
     projectId: req.params.id,
