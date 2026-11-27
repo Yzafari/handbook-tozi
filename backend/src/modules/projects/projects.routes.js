@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticate } from '../../middlewares/auth.middleware.js';
 import { validate } from '../../middlewares/validation.middleware.js';
 import * as controller from './projects.controller.js';
+import { requireProjectPermission } from './access.js';
 
 const router = Router();
 
@@ -81,6 +82,7 @@ router.get(
 router.get(
   '/:id',
   validate({ params: idParamsSchema }),
+  requireProjectPermission('project:read'),
   controller.detail
 );
 
