@@ -414,3 +414,262 @@ export async function getProjectDetail({ projectId, userId }) {
     })),
   };
 }
+
+export async function addProjectMember({
+  projectId,
+  userId,
+  email,
+  roleKey,
+  actor,
+}) {
+  if (!actor?.userId || !actor?.permissions?.includes('project:manage_members')) {
+    throw new AppError(
+      403,
+      'PROJECT_PERMISSION_DENIED',
+      'شما مجوز افزودن همکار به این پروژه را ندارید. برای دریافت دسترسی با مالک پروژه تماس بگیرید.'
+    );
+  }
+
+  if ((!userId && !email) || (userId && email)) {
+    throw new AppError(
+      400,
+      'INVALID_MEMBER_IDENTIFIER',
+      'برای افزودن همکار باید فقط شناسه کاربری یا ایمیل او را وارد کنید.'
+    );
+  }
+
+  if (!['MANAGER', 'MEMBER', 'VIEWER'].includes(roleKey)) {
+    throw new AppError(
+      400,
+      'INVALID_PROJECT_ROLE',
+      'نقش انتخاب‌شده معتبر نیست. یکی از نقش‌های مجاز پروژه را انتخاب کنید.'
+    );
+  }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const project = await tx.project.findFirst({
+        where: {
+          id: projectId,
+          archivedAt: null,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!project) {
+        throw new AppError(
+          404,
+          'PROJECT_NOT_FOUND',
+          'پروژه موردنظر یافت نشد یا بایگانی شده است. شناسه پروژه را بررسی کنید.'
+        );
+      }
+
+      const targetUser = userId
+        ? await tx.user.findUnique({
+            where: { id: userId },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+              jobRole: true,
+              isActive: true,
+            },
+          })
+        : await tx.user.findFirst({
+            where: {
+              email: {
+                equals: email.trim(),
+                mode: 'insensitive',
+              },
+            },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+              jobRole: true,
+              isActive: true,
+            },
+          });
+
+      if (!targetUser) {
+        throw new AppError(
+          404,
+          'MEMBER_USER_NOT_FOUND',
+          'حساب کاربری این همکار پیدا نشد. شناسه یا ایمیل را بررسی کنید.'
+        );
+      }
+
+      if (!targetUser.isActive) {
+        throw new AppError(
+          400,
+          'MEMBER_USER_INACTIVE',
+          'حساب کاربری این همکار غیرفعال است و امکان افزودن او به پروژه وجود ندارد.'
+        );
+      }
+
+      if (targetUser.id === actor.userId) {
+        throw new AppError(
+          400,
+          'CANNOT_ADD_SELF',
+          'شما از قبل عضو این پروژه هستید و نمی‌توانید خودتان را دوباره اضافه کنید.'
+        );
+      }
+
+      const existingMember = await tx.projectMember.findUnique({
+        where: {
+          projectId_userId: {
+            projectId,
+            userId: targetUser.id,
+          },
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (existingMember?.status === 'ACTIVE') {
+        throw new AppError(
+          409,
+          'PROJECT_MEMBER_ALREADY_EXISTS',
+          'این همکار در حال حاضر عضو فعال پروژه است. نیازی به افزودن مجدد او نیست.'
+        );
+      }
+
+      if (existingMember) {
+        throw new AppError(
+          409,
+          'PROJECT_MEMBER_INACTIVE',
+          'برای این همکار سابقه عضویت غیرفعال وجود دارد. برای فعال‌سازی مجدد، با مالک پروژه تماس بگیرید.'
+        );
+      }
+
+      const targetRole = await tx.projectRole.findUnique({
+        where: {
+          projectId_key: {
+            projectId,
+            key: roleKey,
+          },
+        },
+        include: {
+          permissions: {
+            select: {
+              permission: true,
+            },
+          },
+        },
+      });
+
+      if (!targetRole) {
+        throw new AppError(
+          400,
+          'PROJECT_ROLE_NOT_FOUND',
+          'نقش انتخاب‌شده در این پروژه وجود ندارد. صفحه پروژه را به‌روزرسانی و دوباره تلاش کنید.'
+        );
+      }
+
+      const actorPermissions = new Set(actor.permissions);
+
+      const hasExcessPermission = targetRole.permissions.some(
+        (item) => !actorPermissions.has(item.permission)
+      );
+
+      if (hasExcessPermission) {
+        throw new AppError(
+          403,
+          'PROJECT_ROLE_ESCALATION_DENIED',
+          'نقش انتخاب‌شده دسترسی‌هایی بیشتر از سطح دسترسی شما دارد. لطفاً نقش پایین‌تری انتخاب کنید.'
+        );
+      }
+
+      const membership = await tx.projectMember.create({
+        data: {
+          projectId,
+          userId: targetUser.id,
+          roleId: targetRole.id,
+          status: 'ACTIVE',
+        },
+        select: {
+          id: true,
+          projectId: true,
+          userId: true,
+          status: true,
+          joinedAt: true,
+          projectRole: {
+            select: {
+              id: true,
+              key: true,
+              name: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+              jobRole: true,
+            },
+          },
+        },
+      });
+
+      return membership;
+    });
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    if (error?.code === 'P2002') {
+      throw new AppError(
+        409,
+        'PROJECT_MEMBER_ALREADY_EXISTS',
+        'این همکار قبلاً به پروژه اضافه شده است. فهرست اعضای پروژه را بررسی کنید.'
+      );
+    }
+
+    throw error;
+  }
+}
+
+export async function listProjectMembers({ projectId }) {
+  const members = await prisma.projectMember.findMany({
+    where: {
+      projectId,
+      status: 'ACTIVE',
+    },
+    orderBy: {
+      joinedAt: 'asc',
+    },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      joinedAt: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+          jobRole: true,
+        },
+      },
+      projectRole: {
+        select: {
+          id: true,
+          key: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  return members;
+}
+
