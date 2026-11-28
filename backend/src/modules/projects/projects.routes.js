@@ -146,6 +146,14 @@ router.post(
   controller.rejoinConversation
 );
 
+// --- اصلاحیه: اضافه کردن validate({ params: idParamsSchema }) برای هماهنگی با سایر روت‌ها ---
+router.get(
+  '/:id/conversation/membership',
+  validate({ params: idParamsSchema }),
+  requireProjectPermission('conversation:read'),
+  controller.getConversationMembership
+);
+
 router.post(
   '/:id/conversation/messages',
   validate({
