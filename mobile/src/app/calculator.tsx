@@ -516,7 +516,7 @@ const createStyles = (ui: Ui, row: 'row' | 'row-reverse', align: 'left' | 'right
   functionRow: { flexDirection: 'row', gap: 7 },
   functionKey: { flex: 1, minHeight: 40, borderRadius: 11, backgroundColor: ui.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   functionText: { color: ui.blue, fontSize: 12, fontWeight: '700' },
-    keypad: {
+  keypad: {
     width: '100%',
     alignSelf: 'stretch',
     marginTop: 12,
@@ -535,15 +535,19 @@ const createStyles = (ui: Ui, row: 'row' | 'row-reverse', align: 'left' | 'right
     minWidth: 0,
     height: 58,
     borderRadius: 17,
-    backgroundColor: ui.surface,
+    backgroundColor: ui.surfaceAlt, // تغییر رنگ برای واضح دیده شدن دکمه‌ها
     borderWidth: 1,
     borderColor: ui.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  keyOp: {
+    backgroundColor: 'rgba(24, 214, 140, 0.15)', // استایل اضافه شده برای دکمه‌های عملگر
+    borderColor: 'transparent',
+  },
   keyClear: { backgroundColor: ui.dangerSoft, borderColor: 'transparent' },
   keyDel: { backgroundColor: ui.surfaceAlt, borderColor: 'transparent' },
-  keyText: { color: ui.text, fontSize: 23, fontWeight: '700' },
+  keyText: { color: ui.text, fontSize: 23, fontWeight: '700', textAlign: 'center' }, // اضافه شدن textAlign
   equals: { height: 58, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginTop: 12 },
   equalsText: { color: '#04140E', fontSize: 17, fontWeight: '800' },
   historyHead: { flexDirection: row, alignItems: 'center', justifyContent: 'space-between', marginTop: 28, marginBottom: 10 },
