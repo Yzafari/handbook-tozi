@@ -1,4 +1,3 @@
-
 import { randomUUID } from 'node:crypto';
 import prisma from '../../config/database.js';
 import { AppError } from '../../utils/response.util.js';
@@ -1052,10 +1051,11 @@ async function getActiveConversationAccess({ db, projectId, userId }) {
   }
 
   if (project.conversation.members.length === 0) {
+    // اصلاح پیام راهنما طبق مورد ۴ تصاویر
     throw new AppError(
       403,
       'CONVERSATION_MEMBERSHIP_REQUIRED',
-      'شما عضو فعال گفت‌وگوی این پروژه نیستید یا قبلاً از آن خارج شده‌اید. برای دسترسی مجدد با مدیر پروژه تماس بگیرید.'
+      'شما عضو فعال گفت‌وگوی این پروژه نیستید یا قبلاً از آن خارج شده‌اید. لطفاً از گزینه «بازگشت به گفت‌وگو» استفاده کنید.'
     );
   }
 
@@ -1205,5 +1205,233 @@ export async function listConversationMessages({
     }));
 
   return { items, nextCursor, hasMore };
+} // <--- آکولاد بسته‌شده اضافه شد
+
+export async function editConversationMessage({
+  projectId,
+  userId,
+  messageId,
+  content,
+}) {
+  const normalizedContent = String(content ?? '').trim();
+
+  if (!messageId) {
+    throw new AppError(
+      400,
+      'INVALID_MESSAGE_ID',
+      'شناسه پیام معتبر نیست. صفحه گفت‌وگو را تازه‌سازی و دوباره تلاش کنید.'
+    );
+  }
+
+  if (!normalizedContent || normalizedContent.length > 10000) {
+    throw new AppError(
+      400,
+      'INVALID_MESSAGE_CONTENT',
+      'متن پیام خالی یا بیش از حد طولانی است. متن پیام را اصلاح و دوباره تلاش کنید.'
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const conversationId = await getActiveConversationAccess({
+      db: tx,
+      projectId,
+      userId,
+    });
+
+    const message = await tx.conversationMessage.findFirst({
+      where: {
+        id: messageId,
+        conversationId,
+      },
+      select: {
+        id: true,
+        senderId: true,
+        deletedAt: true,
+      },
+    });
+
+    if (!message) {
+      throw new AppError(
+        404,
+        'MESSAGE_NOT_FOUND',
+        'پیام موردنظر در گفت‌وگوی این پروژه پیدا نشد.'
+      );
+    }
+
+    // کنترل دسترسی: فقط نویسنده پیام مجاز به ویرایش است
+    if (message.senderId !== userId) {
+      throw new AppError(
+        403,
+        'MESSAGE_EDIT_FORBIDDEN',
+        'فقط نویسنده پیام می‌تواند آن را ویرایش کند.'
+      );
+    }
+
+    if (message.deletedAt) {
+      throw new AppError(
+        409,
+        'MESSAGE_ALREADY_DELETED',
+        'این پیام قبلاً حذف شده و امکان ویرایش آن وجود ندارد.'
+      );
+    }
+
+    // مدیریت هم‌زمانی با updateMany و چک کردن deletedAt: null
+    const updateResult = await tx.conversationMessage.updateMany({
+      where: {
+        id: messageId,
+        conversationId,
+        senderId: userId,
+        deletedAt: null,
+      },
+      data: {
+        content: normalizedContent,
+        editedAt: new Date(),
+      },
+    });
+
+    if (updateResult.count !== 1) {
+      throw new AppError(
+        409,
+        'MESSAGE_EDIT_CONFLICT',
+        'پیام هم‌زمان تغییر کرده یا دیگر قابل ویرایش نیست. تاریخچه گفت‌وگو را تازه‌سازی و دوباره تلاش کنید.'
+      );
+    }
+
+    const updatedMessage = await tx.conversationMessage.findFirst({
+      where: {
+        id: messageId,
+        conversationId,
+      },
+      select: {
+        id: true,
+        conversationId: true,
+        content: true,
+        createdAt: true,
+        editedAt: true,
+        deletedAt: true,
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+            jobRole: true,
+          },
+        },
+      },
+    });
+
+    return updatedMessage;
+  });
 }
 
+export async function deleteConversationMessage({
+  projectId,
+  userId,
+  messageId,
+}) {
+  if (!messageId) {
+    throw new AppError(
+      400,
+      'INVALID_MESSAGE_ID',
+      'شناسه پیام معتبر نیست. صفحه گفت‌وگو را تازه‌سازی و دوباره تلاش کنید.'
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const conversationId = await getActiveConversationAccess({
+      db: tx,
+      projectId,
+      userId,
+    });
+
+    const message = await tx.conversationMessage.findFirst({
+      where: {
+        id: messageId,
+        conversationId,
+      },
+      select: {
+        id: true,
+        senderId: true,
+        deletedAt: true,
+      },
+    });
+
+    if (!message) {
+      throw new AppError(
+        404,
+        'MESSAGE_NOT_FOUND',
+        'پیام موردنظر در گفت‌وگوی این پروژه پیدا نشد.'
+      );
+    }
+
+    // کنترل دسترسی: فقط نویسنده پیام مجاز به حذف است
+    if (message.senderId !== userId) {
+      throw new AppError(
+        403,
+        'MESSAGE_DELETE_FORBIDDEN',
+        'فقط نویسنده پیام می‌تواند آن را حذف کند.'
+      );
+    }
+
+    if (message.deletedAt) {
+      throw new AppError(
+        409,
+        'MESSAGE_ALREADY_DELETED',
+        'این پیام قبلاً حذف شده است و نیازی به حذف دوباره آن نیست.'
+      );
+    }
+
+    const deletedAt = new Date();
+
+    // مدیریت هم‌زمانی با updateMany و چک کردن deletedAt: null
+    const updateResult = await tx.conversationMessage.updateMany({
+      where: {
+        id: messageId,
+        conversationId,
+        senderId: userId,
+        deletedAt: null,
+      },
+      data: {
+        deletedAt,
+      },
+    });
+
+    if (updateResult.count !== 1) {
+      throw new AppError(
+        409,
+        'MESSAGE_DELETE_CONFLICT',
+        'وضعیت پیام هم‌زمان تغییر کرده است. تاریخچه گفت‌وگو را تازه‌سازی و دوباره تلاش کنید.'
+      );
+    }
+
+    const deletedMessage = await tx.conversationMessage.findFirst({
+      where: {
+        id: messageId,
+        conversationId,
+      },
+      select: {
+        id: true,
+        conversationId: true,
+        content: true,
+        createdAt: true,
+        editedAt: true,
+        deletedAt: true,
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+            jobRole: true,
+          },
+        },
+      },
+    });
+
+    return {
+      ...deletedMessage,
+      content: null,
+      isDeleted: true,
+    };
+  });
+}
+// <--- آکولاد اضافی انتهای فایل حذف شد
