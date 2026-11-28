@@ -55,6 +55,21 @@ export const leaveConversation = asyncHandler(async (req, res) => {
   );
 });
 
+export const rejoinConversation = asyncHandler(async (req, res) => {
+  const result = await service.rejoinProjectConversation({
+    projectId: req.params.id,
+    userId: req.user.id,
+  });
+
+  return ok(
+    res,
+    result,
+    result.alreadyActive
+      ? 'شما از قبل عضو فعال گفت‌وگوی این پروژه هستید.'
+      : 'با موفقیت دوباره به گفت‌وگوی پروژه پیوستید.'
+  );
+});
+
 export const addMember = asyncHandler(async (req, res) => {
   const member = await service.addProjectMember({
     projectId: req.params.id,
