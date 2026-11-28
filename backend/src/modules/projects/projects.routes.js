@@ -64,6 +64,7 @@ const listQuerySchema = z.object({
 const idParamsSchema = z.object({
   id: z.string().trim().min(1).max(128),
 });
+
 const sendConversationMessageSchema = z.object({
   content: z.string()
     .trim()
@@ -93,7 +94,6 @@ const addMemberSchema = z.object({
   }
 });
 
-
 router.use(authenticate);
 
 router.post(
@@ -114,7 +114,6 @@ router.get(
   requireProjectPermission('project:read'),
   controller.detail
 );
-
 
 router.post(
   '/:id/members',
@@ -139,6 +138,14 @@ router.post(
   requireProjectPermission('project:read'),
   controller.leaveConversation
 );
+
+router.post(
+  '/:id/conversation/rejoin',
+  validate({ params: idParamsSchema }),
+  requireProjectPermission('conversation:read'),
+  controller.rejoinConversation
+);
+
 router.post(
   '/:id/conversation/messages',
   validate({
@@ -158,4 +165,5 @@ router.get(
   requireProjectPermission('conversation:read'),
   controller.listConversationMessages
 );
+
 export default router;
