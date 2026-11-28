@@ -142,6 +142,7 @@ export async function getProjectDetail(
 
   return data as ProjectDetail;
 }
+
 export type ConversationMessage = {
   id: string;
   conversationId: string;
@@ -162,6 +163,19 @@ export type ConversationMessagesPage = {
   items: ConversationMessage[];
   nextCursor: string | null;
   hasMore: boolean;
+};
+
+// وضعیت عضویت کاربر در گفت‌وگوی پروژه
+export type ConversationMembershipStatus = 'ACTIVE' | 'LEFT';
+
+export type ConversationMembership = {
+  projectId: string;
+  conversationId: string;
+  status: ConversationMembershipStatus;
+  isMember: boolean;
+  joinedAt: string | null;
+  leftAt: string | null;
+  projectMembershipPreserved: boolean;
 };
 
 export async function getConversationMessages(
@@ -242,10 +256,51 @@ export async function sendConversationMessage(
 
   return message as ConversationMessage;
 }
+
 export async function leaveProjectConversation(
   projectId: string
 ): Promise<void> {
   await api.post(
     `/projects/${encodeURIComponent(projectId)}/conversation/leave`
   );
+}
+
+// دریافت وضعیت واقعی عضویت کاربر در گفت‌وگوی پروژه از سرور
+export async function getProjectConversationMembership(
+  projectId: string
+): Promise<ConversationMembership> {
+  if (!projectId?.trim()) {
+    throw new Error(
+      'شناسه پروژه معتبر نیست. لطفاً دوباره وارد صفحه پروژه شوید.'
+    );
+  }
+
+  const response = await api.get(
+    `/projects/${encodeURIComponent(projectId)}/conversation/membership`
+  );
+
+  const data = response.data?.data;
+
+  if (
+    !data ||
+    typeof data.projectId !== 'string' ||
+    typeof data.conversationId !== 'string' ||
+    !['ACTIVE', 'LEFT'].includes(data.status) ||
+    typeof data.isMember !== 'boolean' ||
+    !(typeof data.joinedAt === 'string' || data.joinedAt === null) ||
+    !(typeof data.leftAt === 'string' || data.leftAt === null) ||
+    typeof data.projectMembershipPreserved !== 'boolean'
+  ) {
+    throw new Error(
+      'ساختار وضعیت عضویت گفت‌وگو معتبر نیست. لطفاً صفحه را تازه‌سازی کنید.'
+    );
+  }
+
+  if (data.isMember !== (data.status === 'ACTIVE')) {
+    throw new Error(
+      'وضعیت عضویت دریافتی از سرور با اطلاعات عضویت مطابقت ندارد. لطفاً دوباره تلاش کنید.'
+    );
+  }
+
+  return data as ConversationMembership;
 }
