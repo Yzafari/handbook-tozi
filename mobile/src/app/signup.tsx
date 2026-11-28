@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, ImageBackground, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Zap } from 'lucide-react-native';
 import { useAuth } from '../core/auth/AuthContext';
