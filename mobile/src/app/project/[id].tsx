@@ -1,3 +1,4 @@
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,6 +22,7 @@ import {
 import { AppScreen, Card, SectionTitle } from '../../features/common/AppScreen';
 import { useDesignTokens } from '../../core/theme/useDesignTokens';
 import { getUi } from '../../core/theme/gridhandUi';
+import { useAuth } from '../../core/auth/AuthContext';
 
 import {
   getProjectDetail,
@@ -29,6 +31,8 @@ import {
   leaveProjectConversation,
   getProjectConversationMembership,
   rejoinProjectConversation,
+  editConversationMessage,
+  deleteConversationMessage,
 } from '../../core/network/projects';
 
 import type {
@@ -79,6 +83,9 @@ export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const projectId = typeof id === 'string' ? id : '';
 
+  const { user } = useAuth();
+  const currentUserId = user?.id;
+
   const { isDark, textAlign, rowDirection } = useDesignTokens();
   const ui = getUi(isDark);
 
@@ -102,6 +109,15 @@ export default function ProjectDetailScreen() {
     null,
   );
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
+
+  // وضعیت ویرایش و حذف پیام
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(
+    null,
+  );
+  const [editMessageDraft, setEditMessageDraft] = useState('');
+  const [messageActionLoadingId, setMessageActionLoadingId] = useState<
+    string | null
+  >(null);
 
   const isMountedRef = useRef(true);
   const projectIdRef = useRef(projectId);
@@ -352,6 +368,8 @@ export default function ProjectDetailScreen() {
               setMessageDraft('');
               setNextMessageCursor(null);
               setHasMoreMessages(false);
+              setEditingMessageId(null);
+              setEditMessageDraft('');
 
               Alert.alert(
                 'خروج موفق',
@@ -396,7 +414,6 @@ export default function ProjectDetailScreen() {
 
       if (isStale(requestedId)) return;
 
-      // پس از بازگشت موفق، وضعیت عضویت دوباره از سرور خوانده می‌شود.
       const membership = await getProjectConversationMembership(requestedId);
 
       if (isStale(requestedId)) return;
@@ -409,8 +426,9 @@ export default function ProjectDetailScreen() {
       setNextMessageCursor(null);
       setHasMoreMessages(false);
       setMessageDraft('');
+      setEditingMessageId(null);
+      setEditMessageDraft('');
 
-      // با تغییر وضعیت به ACTIVE، هوک useEffect به صورت خودکار تاریخچه پیام‌ها را دریافت می‌کند.
       setConversationStatus('ACTIVE');
 
       Alert.alert(
@@ -509,6 +527,250 @@ export default function ProjectDetailScreen() {
     isStale,
   ]);
 
+  // شروع ویرایش پیام انتخاب‌شده
+  const handleStartEditMessage = useCallback(
+    (message: ConversationMessage) => {
+      if (
+        conversationStatus !== 'ACTIVE' ||
+        !currentUserId ||
+        message.sender?.id !== currentUserId ||
+        message.isDeleted ||
+        message.deletedAt ||
+        messageActionLoadingId
+      ) {
+        return;
+      }
+
+      setEditingMessageId(message.id);
+      setEditMessageDraft(message.content ?? '');
+      setConversationError('');
+    },
+    [
+      conversationStatus,
+      currentUserId,
+      messageActionLoadingId,
+    ],
+  );
+
+  // لغو ویرایش پیام
+  const handleCancelEditMessage = useCallback(() => {
+    if (messageActionLoadingId) return;
+
+    setEditingMessageId(null);
+    setEditMessageDraft('');
+  }, [messageActionLoadingId]);
+
+  // ثبت ویرایش پیام
+  const handleSaveEditMessage = useCallback(async () => {
+    if (!projectId || !editingMessageId) {
+      setConversationError(
+        'شناسه پروژه یا پیام معتبر نیست. لطفاً دوباره تلاش کنید.',
+      );
+      return;
+    }
+
+    if (conversationStatus !== 'ACTIVE') {
+      setConversationError(
+        'برای ویرایش پیام باید عضو فعال گفت‌وگوی پروژه باشید.',
+      );
+      return;
+    }
+
+    const targetMessage = messages.find(
+      (item) => item.id === editingMessageId,
+    );
+
+    if (!targetMessage) {
+      setConversationError(
+        'پیام موردنظر در تاریخچه فعلی پیدا نشد. تاریخچه را تازه‌سازی کنید.',
+      );
+      return;
+    }
+
+    if (
+      !currentUserId ||
+      targetMessage.sender?.id !== currentUserId
+    ) {
+      setConversationError(
+        'شما فقط می‌توانید پیام‌های خودتان را ویرایش کنید.',
+      );
+      return;
+    }
+
+    if (targetMessage.isDeleted || targetMessage.deletedAt) {
+      setConversationError(
+        'پیام حذف‌شده قابل ویرایش نیست.',
+      );
+      return;
+    }
+
+    const content = editMessageDraft.trim();
+
+    if (!content) {
+      setConversationError(
+        'متن پیام نمی‌تواند خالی باشد.',
+      );
+      return;
+    }
+
+    if (content.length > 10000) {
+      setConversationError(
+        'متن پیام نباید بیشتر از ۱۰۰۰۰ کاراکتر باشد.',
+      );
+      return;
+    }
+
+    if (messageActionLoadingId) return;
+
+    const requestedId = projectId;
+    const requestedMessageId = editingMessageId;
+
+    setMessageActionLoadingId(requestedMessageId);
+    setConversationError('');
+
+    try {
+      const updatedMessage = await editConversationMessage(
+        requestedId,
+        requestedMessageId,
+        content,
+      );
+
+      if (isStale(requestedId)) return;
+
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === updatedMessage.id ? updatedMessage : item,
+        ),
+      );
+
+      setEditingMessageId(null);
+      setEditMessageDraft('');
+
+      Alert.alert(
+        'ویرایش موفق',
+        'پیام شما با موفقیت ویرایش شد.',
+      );
+    } catch (err) {
+      if (isStale(requestedId)) return;
+
+      setConversationError(
+        errorMessage(
+          err,
+          'ویرایش پیام ناموفق بود. اتصال اینترنت را بررسی و دوباره تلاش کنید.',
+        ),
+      );
+    } finally {
+      if (!isStale(requestedId)) {
+        setMessageActionLoadingId(null);
+      }
+    }
+  }, [
+    projectId,
+    conversationStatus,
+    messages,
+    currentUserId,
+    editingMessageId,
+    editMessageDraft,
+    messageActionLoadingId,
+    isStale,
+  ]);
+
+  // حذف منطقی پیام
+  const handleDeleteMessage = useCallback(
+    (message: ConversationMessage) => {
+      if (
+        !projectId ||
+        conversationStatus !== 'ACTIVE' ||
+        !currentUserId ||
+        message.sender?.id !== currentUserId ||
+        message.isDeleted ||
+        message.deletedAt ||
+        messageActionLoadingId
+      ) {
+        return;
+      }
+
+      const requestedId = projectId;
+      const requestedMessageId = message.id;
+
+      Alert.alert(
+        'حذف پیام',
+        'آیا مطمئن هستید که می‌خواهید این پیام را حذف کنید؟ این پیام از تاریخچه گفت‌وگو حذف منطقی خواهد شد.',
+        [
+          {
+            text: 'انصراف',
+            style: 'cancel',
+          },
+          {
+            text: 'حذف پیام',
+            style: 'destructive',
+            onPress: async () => {
+              if (!isMountedRef.current) return;
+
+              if (
+                projectIdRef.current !== requestedId ||
+                conversationStatus !== 'ACTIVE'
+              ) {
+                return;
+              }
+
+              setMessageActionLoadingId(requestedMessageId);
+              setConversationError('');
+
+              try {
+                const deletedMessage = await deleteConversationMessage(
+                  requestedId,
+                  requestedMessageId,
+                );
+
+                if (isStale(requestedId)) return;
+
+                setMessages((current) =>
+                  current.map((item) =>
+                    item.id === deletedMessage.id
+                      ? deletedMessage
+                      : item,
+                  ),
+                );
+
+                if (editingMessageId === requestedMessageId) {
+                  setEditingMessageId(null);
+                  setEditMessageDraft('');
+                }
+
+                Alert.alert(
+                  'حذف موفق',
+                  'پیام شما با موفقیت حذف شد.',
+                );
+              } catch (err) {
+                if (isStale(requestedId)) return;
+
+                setConversationError(
+                  errorMessage(
+                    err,
+                    'حذف پیام ناموفق بود. اتصال اینترنت را بررسی و دوباره تلاش کنید.',
+                  ),
+                );
+              } finally {
+                if (!isStale(requestedId)) {
+                  setMessageActionLoadingId(null);
+                }
+              }
+            },
+          },
+        ],
+      );
+    },
+    [
+      projectId,
+      conversationStatus,
+      currentUserId,
+      messageActionLoadingId,
+      editingMessageId,
+      isStale,
+    ],
+  );
+
   useEffect(() => {
     setProject(null);
     setError('');
@@ -525,11 +787,14 @@ export default function ProjectDetailScreen() {
     setMessageSending(false);
     setOlderMessagesLoading(false);
 
+    setEditingMessageId(null);
+    setEditMessageDraft('');
+    setMessageActionLoadingId(null);
+
     void loadDetail();
     void loadConversationMembership();
   }, [projectId, loadDetail, loadConversationMembership]);
 
-  // این بخش به صورت خودکار پس از فعال شدن مجدد عضویت، پیام‌ها را لود می‌کند
   useEffect(() => {
     if (conversationStatus === 'ACTIVE') {
       void loadConversationMessages();
@@ -1027,71 +1292,260 @@ export default function ProjectDetailScreen() {
                               }
                             }}
                           >
-                            {messages.map((message) => (
-                              <View
-                                key={message.id}
-                                style={[
-                                  styles.messageItem,
-                                  { borderBottomColor: ui.border },
-                                ]}
-                              >
+                            {messages.map((message) => {
+                              const isOwnMessage =
+                                !!currentUserId &&
+                                message.sender?.id === currentUserId;
+
+                              const isDeleted =
+                                !!message.isDeleted || !!message.deletedAt;
+
+                              const isEditing =
+                                editingMessageId === message.id;
+
+                              const isActionLoading =
+                                messageActionLoadingId === message.id;
+
+                              const canManageMessage =
+                                isOwnMessage &&
+                                !isDeleted &&
+                                conversationStatus === 'ACTIVE';
+
+                              return (
                                 <View
+                                  key={message.id}
                                   style={[
-                                    styles.messageHeader,
-                                    { flexDirection: rowDirection },
+                                    styles.messageItem,
+                                    { borderBottomColor: ui.border },
                                   ]}
                                 >
-                                  <Text
-                                    style={{
-                                      color: ui.text,
-                                      fontWeight: '800',
-                                      flex: 1,
-                                      textAlign,
-                                    }}
+                                  <View
+                                    style={[
+                                      styles.messageHeader,
+                                      { flexDirection: rowDirection },
+                                    ]}
                                   >
-                                    {message.sender?.name ||
-                                      'کاربر بدون نام'}
-                                  </Text>
+                                    <Text
+                                      style={{
+                                        color: ui.text,
+                                        fontWeight: '800',
+                                        flex: 1,
+                                        textAlign,
+                                      }}
+                                    >
+                                      {message.sender?.name ||
+                                        'کاربر بدون نام'}
+                                    </Text>
 
-                                  <Text
-                                    style={{
-                                      color: ui.muted,
-                                      fontSize: 10,
-                                    }}
-                                  >
-                                    {new Date(
-                                      message.createdAt,
-                                    ).toLocaleString('fa-IR')}
-                                  </Text>
+                                    <Text
+                                      style={{
+                                        color: ui.muted,
+                                        fontSize: 10,
+                                      }}
+                                    >
+                                      {new Date(
+                                        message.createdAt,
+                                      ).toLocaleString('fa-IR')}
+                                    </Text>
+                                  </View>
+
+                                  {isEditing ? (
+                                    <View style={styles.editContainer}>
+                                      <TextInput
+                                        value={editMessageDraft}
+                                        onChangeText={setEditMessageDraft}
+                                        placeholder="متن اصلاح‌شده پیام..."
+                                        placeholderTextColor={ui.muted}
+                                        multiline
+                                        maxLength={10000}
+                                        editable={!isActionLoading}
+                                        textAlign={textAlign}
+                                        style={[
+                                          styles.editInput,
+                                          {
+                                            color: ui.text,
+                                            backgroundColor: ui.background,
+                                            borderColor: ui.border,
+                                          },
+                                        ]}
+                                      />
+
+                                      <Text
+                                        style={{
+                                          color: ui.muted,
+                                          fontSize: 10,
+                                          textAlign,
+                                        }}
+                                      >
+                                        {editMessageDraft.length}/۱۰۰۰۰
+                                      </Text>
+
+                                      <View
+                                        style={[
+                                          styles.messageActions,
+                                          { flexDirection: rowDirection },
+                                        ]}
+                                      >
+                                        <Pressable
+                                          disabled={
+                                            isActionLoading ||
+                                            !editMessageDraft.trim()
+                                          }
+                                          onPress={() =>
+                                            void handleSaveEditMessage()
+                                          }
+                                          style={[
+                                            styles.messageActionButton,
+                                            {
+                                              backgroundColor: ui.accent,
+                                              opacity:
+                                                isActionLoading ||
+                                                !editMessageDraft.trim()
+                                                  ? 0.5
+                                                  : 1,
+                                            },
+                                          ]}
+                                        >
+                                          {isActionLoading ? (
+                                            <ActivityIndicator
+                                              size="small"
+                                              color="#FFFFFF"
+                                            />
+                                          ) : (
+                                            <Text
+                                              style={styles.primaryActionText}
+                                            >
+                                              ذخیره تغییرات
+                                            </Text>
+                                          )}
+                                        </Pressable>
+
+                                        <Pressable
+                                          disabled={isActionLoading}
+                                          onPress={handleCancelEditMessage}
+                                          style={[
+                                            styles.messageActionButton,
+                                            {
+                                              backgroundColor: ui.accentSoft,
+                                              opacity: isActionLoading
+                                                ? 0.5
+                                                : 1,
+                                            },
+                                          ]}
+                                        >
+                                          <Text
+                                            style={{
+                                              color: ui.text,
+                                              fontWeight: '800',
+                                              fontSize: 11,
+                                            }}
+                                          >
+                                            انصراف
+                                          </Text>
+                                        </Pressable>
+                                      </View>
+                                    </View>
+                                  ) : (
+                                    <Text
+                                      style={{
+                                        color: isDeleted ? ui.muted : ui.text,
+                                        textAlign,
+                                        lineHeight: 23,
+                                        marginTop: 7,
+                                        fontStyle: isDeleted
+                                          ? 'italic'
+                                          : 'normal',
+                                      }}
+                                    >
+                                      {isDeleted
+                                        ? 'این پیام حذف شده است.'
+                                        : message.content || ''}
+                                    </Text>
+                                  )}
+
+                                  {!!message.editedAt && !isDeleted && (
+                                    <Text
+                                      style={{
+                                        color: ui.muted,
+                                        fontSize: 9,
+                                        textAlign,
+                                        marginTop: 4,
+                                      }}
+                                    >
+                                      ویرایش‌شده
+                                    </Text>
+                                  )}
+
+                                  {canManageMessage && !isEditing && (
+                                    <View
+                                      style={[
+                                        styles.messageActions,
+                                        { flexDirection: rowDirection },
+                                      ]}
+                                    >
+                                      <Pressable
+                                        disabled={!!messageActionLoadingId}
+                                        onPress={() =>
+                                          handleStartEditMessage(message)
+                                        }
+                                        style={[
+                                          styles.messageActionButton,
+                                          {
+                                            backgroundColor: ui.accentSoft,
+                                            opacity: messageActionLoadingId
+                                              ? 0.5
+                                              : 1,
+                                          },
+                                        ]}
+                                      >
+                                        <Text
+                                          style={{
+                                            color: ui.accent,
+                                            fontWeight: '800',
+                                            fontSize: 11,
+                                          }}
+                                        >
+                                          ویرایش
+                                        </Text>
+                                      </Pressable>
+
+                                      <Pressable
+                                        disabled={!!messageActionLoadingId}
+                                        onPress={() =>
+                                          handleDeleteMessage(message)
+                                        }
+                                        style={[
+                                          styles.messageActionButton,
+                                          {
+                                            backgroundColor: ui.accentSoft,
+                                            opacity: messageActionLoadingId
+                                              ? 0.5
+                                              : 1,
+                                          },
+                                        ]}
+                                      >
+                                        {isActionLoading ? (
+                                          <ActivityIndicator
+                                            size="small"
+                                            color={ui.danger}
+                                          />
+                                        ) : (
+                                          <Text
+                                            style={{
+                                              color: ui.danger,
+                                              fontWeight: '800',
+                                              fontSize: 11,
+                                            }}
+                                          >
+                                            حذف
+                                          </Text>
+                                        )}
+                                      </Pressable>
+                                    </View>
+                                  )}
                                 </View>
-
-                                <Text
-                                  style={{
-                                    color: ui.text,
-                                    textAlign,
-                                    lineHeight: 23,
-                                    marginTop: 7,
-                                  }}
-                                >
-                                  {message.isDeleted || message.deletedAt
-                                    ? 'این پیام حذف شده است.'
-                                    : message.content || ''}
-                                </Text>
-
-                                {!!message.editedAt && (
-                                  <Text
-                                    style={{
-                                      color: ui.muted,
-                                      fontSize: 9,
-                                      textAlign,
-                                      marginTop: 4,
-                                    }}
-                                  >
-                                    ویرایش‌شده
-                                  </Text>
-                                )}
-                              </View>
-                            ))}
+                              );
+                            })}
                           </ScrollView>
                         )}
                       </>
@@ -1357,39 +1811,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  messageComposer: {
-    alignItems: 'flex-end',
+  messageActions: {
+    alignItems: 'center',
     gap: 8,
-    paddingTop: 14,
-    marginTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: 9,
   },
-  messageInput: {
-    flex: 1,
-    minHeight: 44,
-    maxHeight: 120,
+  messageActionButton: {
+    minHeight: 34,
+    minWidth: 62,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryActionText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 11,
+  },
+  editContainer: {
+    marginTop: 9,
+    gap: 7,
+  },
+  editInput: {
+    minHeight: 80,
+    maxHeight: 180,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 9,
     fontSize: 12,
-  },
-  sendButton: {
-    minWidth: 62,
-    minHeight: 44,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-});,
-  messageItem: {
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  messageHeader: {
-    alignItems: 'center',
-    gap: 10,
+    lineHeight: 22,
   },
   messageComposer: {
     alignItems: 'flex-end',
