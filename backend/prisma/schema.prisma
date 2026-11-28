@@ -12,6 +12,7 @@ enum Role {
   ADMIN
   SUPER_ADMIN
 }
+
 enum ProjectStatus {
   PLANNING
   ACTIVE
@@ -50,41 +51,44 @@ enum DocumentVisibility {
 }
 
 model User {
-  id            String         @id @default(cuid())
-  email         String         @unique
-  password      String
-  name          String?
-  role          Role           @default(USER)
-  jobRole       String?
-  province      String?
-  failedLoginCount Int       @default(0)
-  tokenVersion     Int       @default(0)
-  lockedUntil      DateTime?
-  lastLoginAt      DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  isActive      Boolean        @default(true)
-  phoneEncrypted String?
-  phoneHash     String?        @unique
-  avatarUrl     String?
-  subscriptions Subscription[]
-  payments      Payment[]
-  adminLogs     AdminLog[]
-  refreshTokens RefreshToken[]
-  notifications Notification[]
-  documents     Document[]
-  syncRecords   SyncRecord[]
-  syncOperations SyncOperation[]
-  ocrJobs       OcrJob[]
-  calculationHistory CalculationHistory[]
-  createdProjects       Project[]       @relation("ProjectCreator")
-  managedProjects       Project[]       @relation("ProjectManager")
-  employerProjects      Project[]       @relation("ProjectEmployer")
-  supervisedProjects    Project[]       @relation("ProjectSupervisor")
-  contractedProjects    Project[]       @relation("ProjectContractor")
-  technicalLeadProjects Project[]       @relation("ProjectTechnicalLead")
-  projectMemberships    ProjectMember[]
-  conversationMemberships ConversationMember[]
+  id                       String                @id @default(cuid())
+  email                    String                @unique
+  password                 String
+  name                     String?
+  role                     Role                  @default(USER)
+  jobRole                  String?
+  province                 String?
+  failedLoginCount         Int                   @default(0)
+  tokenVersion             Int                   @default(0)
+  lockedUntil              DateTime?
+  lastLoginAt              DateTime?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  isActive                 Boolean               @default(true)
+  phoneEncrypted           String?
+  phoneHash                String?               @unique
+  avatarUrl                String?
+  
+  subscriptions            Subscription[]
+  payments                 Payment[]
+  adminLogs                AdminLog[]
+  refreshTokens            RefreshToken[]
+  notifications            Notification[]
+  documents                Document[]
+  syncRecords              SyncRecord[]
+  syncOperations           SyncOperation[]
+  ocrJobs                  OcrJob[]
+  calculationHistory       CalculationHistory[]
+  
+  createdProjects          Project[]             @relation("ProjectCreator")
+  managedProjects          Project[]             @relation("ProjectManager")
+  employerProjects         Project[]             @relation("ProjectEmployer")
+  supervisedProjects       Project[]             @relation("ProjectSupervisor")
+  contractedProjects       Project[]             @relation("ProjectContractor")
+  technicalLeadProjects    Project[]             @relation("ProjectTechnicalLead")
+  
+  projectMemberships       ProjectMember[]
+  conversationMemberships  ConversationMember[]
   sentConversationMessages ConversationMessage[] @relation("ConversationMessageSender")
 }
 
@@ -97,6 +101,7 @@ model Plan {
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  
   subscriptions Subscription[]
   payments      Payment[]
 }
@@ -119,25 +124,25 @@ model Subscription {
 }
 
 model Payment {
-  id          String        @id @default(cuid())
-  userId      String
-  planId      String
-  amount      Int
-  authority   String?       @unique
-  refId       String?
-  status      PaymentStatus @default(PENDING)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  amountToman Int?
-  durationDays Int          @default(30)
-  cardPanMasked String?
-  verifiedAt  DateTime?
+  id             String        @id @default(cuid())
+  userId         String
+  planId         String
+  amount         Int
+  authority      String?       @unique
+  refId          String?
+  status         PaymentStatus @default(PENDING)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  amountToman    Int?
+  durationDays   Int           @default(30)
+  cardPanMasked  String?
+  verifiedAt     DateTime?
   subscriptionId String?
   idempotencyKey String?
-  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan        Plan          @relation(fields: [planId], references: [id])
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan           Plan          @relation(fields: [planId], references: [id])
 
   @@unique([userId, idempotencyKey])
   @@index([status, createdAt])
@@ -151,59 +156,62 @@ model AdminLog {
   details   String?
   createdAt DateTime @default(now())
   
-  admin     User?     @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  admin     User?    @relation(fields: [adminId], references: [id], onDelete: SetNull)
 }
+
 model RefreshToken {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   revokedAt DateTime?
   ip        String?
   userAgent String?
+  
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, revokedAt])
 }
+
 model Notification {
-  id        Int    @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
   body      String
   type      String   @default("GENERAL")
   readAt    DateTime?
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
-
-
 model Document {
-  id              String             @id @default(cuid())
-  title           String
-  originalName    String
-  sourcePath      String?
-  mimeType        String
-  sizeBytes       Int
-  checksumSha256  String             @unique
-  storageKey      String             @unique
-  visibility      DocumentVisibility @default(PUBLIC)
-  accessRoles     String[]           @default([])
-  accessJobRoles  String[]           @default([])
-  ownerId         String?
-  description     String?
-  pageCount       Int?
-  language        String             @default("fa")
-  indexStatus     String             @default("PENDING")
-  indexedAt       DateTime?
-  isActive        Boolean            @default(true)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  owner           User?              @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  indexJobs       DocumentIndexJob[]
+  id             String             @id @default(cuid())
+  title          String
+  originalName   String
+  sourcePath     String?
+  mimeType       String
+  sizeBytes      Int
+  checksumSha256 String             @unique
+  storageKey     String             @unique
+  visibility     DocumentVisibility @default(PUBLIC)
+  accessRoles    String[]           @default([])
+  accessJobRoles String[]           @default([])
+  ownerId        String?
+  description    String?
+  pageCount      Int?
+  language       String             @default("fa")
+  indexStatus    String             @default("PENDING")
+  indexedAt      DateTime?
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  
+  owner          User?              @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  indexJobs      DocumentIndexJob[]
 
   @@index([visibility, isActive, createdAt])
   @@index([ownerId, createdAt])
@@ -220,67 +228,69 @@ model DocumentIndexJob {
   lastError   String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  
   document    Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([status, availableAt, createdAt])
   @@index([documentId, createdAt])
 }
 
-
 model SyncRecord {
-  id          String   @id @default(cuid())
-  userId      String
-  moduleName  String
-  entityType  String
-  entityId    String
-  version     Int      @default(1)
-  payload     Json
-  isDeleted   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  userId     String
+  moduleName String
+  entityType String
+  entityId   String
+  version    Int      @default(1)
+  payload    Json
+  isDeleted  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, moduleName, entityType, entityId])
   @@index([userId, updatedAt, id])
 }
 
 model SyncOperation {
-  id              String   @id @default(cuid())
-  operationId     String   @unique
-  userId          String
-  moduleName      String
-  entityType      String
-  entityId        String
-  operation       String
-  requestHash     String   @default("")
-  resultStatus    String
-  resultVersion   Int?
-  conflictReason  String?
-  createdAt       DateTime @default(now())
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  operationId    String   @unique
+  userId         String
+  moduleName     String
+  entityType     String
+  entityId       String
+  operation      String
+  requestHash    String   @default("")
+  resultStatus   String
+  resultVersion  Int?
+  conflictReason String?
+  createdAt      DateTime @default(now())
+  
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
 }
 
-
 model OcrJob {
-  id            String   @id @default(cuid())
-  userId        String
-  storageKey    String   @unique
+  id             String   @id @default(cuid())
+  userId         String
+  storageKey     String   @unique
   storageDeleted Boolean  @default(false)
-  mimeType      String
-  sizeBytes     Int
+  mimeType       String
+  sizeBytes      Int
   checksumSha256 String
-  status        String   @default("PENDING")
-  attempts      Int      @default(0)
-  availableAt   DateTime @default(now())
-  lockedAt      DateTime?
-  resultText    String?
-  confidence    Float?
-  errorMessage  String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status         String   @default("PENDING")
+  attempts       Int      @default(0)
+  availableAt    DateTime @default(now())
+  lockedAt       DateTime?
+  resultText     String?
+  confidence     Float?
+  errorMessage   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([status, availableAt, createdAt])
@@ -296,54 +306,51 @@ model CalculationHistory {
   outputData  Json
   sources     Json?
   createdAt   DateTime @default(now())
+  
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, clientId])
   @@index([userId, createdAt])
 }
+
 model Project {
-  id                    String        @id @default(cuid())
-  code                  String        @unique
-  name                  String
-  description           String?
-  type                  String
-  status                ProjectStatus @default(PLANNING)
-
-  startDate             DateTime?
-  expectedEndDate       DateTime?
-
-  organizationName      String?
-  employerName          String?
-  contractorName        String?
-
-  createdById           String
-  projectManagerUserId  String?
-  employerUserId        String?
-  supervisorUserId      String?
-  contractorUserId      String?
-  technicalLeadUserId   String?
-
-  province              String?
-  county                String?
-  address               String?
-  latitude              Float?
-  longitude             Float?
-
-  archivedAt            DateTime?
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
-
-  createdBy             User          @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  projectManager        User?         @relation("ProjectManager", fields: [projectManagerUserId], references: [id], onDelete: SetNull)
-  employer              User?         @relation("ProjectEmployer", fields: [employerUserId], references: [id], onDelete: SetNull)
-  supervisor            User?         @relation("ProjectSupervisor", fields: [supervisorUserId], references: [id], onDelete: SetNull)
-  contractor            User?         @relation("ProjectContractor", fields: [contractorUserId], references: [id], onDelete: SetNull)
-  technicalLead         User?         @relation("ProjectTechnicalLead", fields: [technicalLeadUserId], references: [id], onDelete: SetNull)
-
-  members               ProjectMember[]
-  roles                 ProjectRole[]
-  workspace             ProjectWorkspace?
-  conversation          Conversation?
+  id                   String        @id @default(cuid())
+  code                 String        @unique
+  name                 String
+  description          String?
+  type                 String
+  status               ProjectStatus @default(PLANNING)
+  startDate            DateTime?
+  expectedEndDate      DateTime?
+  organizationName     String?
+  employerName         String?
+  contractorName       String?
+  createdById          String
+  projectManagerUserId String?
+  employerUserId       String?
+  supervisorUserId     String?
+  contractorUserId     String?
+  technicalLeadUserId  String?
+  province             String?
+  county               String?
+  address              String?
+  latitude             Float?
+  longitude            Float?
+  archivedAt           DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  
+  createdBy            User          @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  projectManager       User?         @relation("ProjectManager", fields: [projectManagerUserId], references: [id], onDelete: SetNull)
+  employer             User?         @relation("ProjectEmployer", fields: [employerUserId], references: [id], onDelete: SetNull)
+  supervisor           User?         @relation("ProjectSupervisor", fields: [supervisorUserId], references: [id], onDelete: SetNull)
+  contractor           User?         @relation("ProjectContractor", fields: [contractorUserId], references: [id], onDelete: SetNull)
+  technicalLead        User?         @relation("ProjectTechnicalLead", fields: [technicalLeadUserId], references: [id], onDelete: SetNull)
+  
+  members              ProjectMember[]
+  roles                ProjectRole[]
+  workspace            ProjectWorkspace?
+  conversation         Conversation?
 
   @@index([createdById, status, createdAt])
   @@index([projectManagerUserId, status])
@@ -360,7 +367,7 @@ model ProjectMember {
   joinedAt    DateTime            @default(now())
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
-
+  
   project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user        User                @relation(fields: [userId], references: [id], onDelete: Restrict)
   projectRole ProjectRole         @relation(fields: [roleId], references: [id], onDelete: Restrict)
@@ -372,15 +379,15 @@ model ProjectMember {
 }
 
 model ProjectRole {
-  id          String                 @id @default(cuid())
+  id          String                  @id @default(cuid())
   projectId   String
   key         String
   name        String
-  isSystem    Boolean                @default(false)
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
-
-  project     Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  isSystem    Boolean                 @default(false)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  
+  project     Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
   members     ProjectMember[]
   permissions ProjectRolePermission[]
 
@@ -389,12 +396,12 @@ model ProjectRole {
 }
 
 model ProjectRolePermission {
-  id           String      @id @default(cuid())
+  id            String      @id @default(cuid())
   projectRoleId String
-  permission   String
-  createdAt    DateTime    @default(now())
-
-  projectRole  ProjectRole @relation(fields: [projectRoleId], references: [id], onDelete: Cascade)
+  permission    String
+  createdAt     DateTime    @default(now())
+  
+  projectRole   ProjectRole @relation(fields: [projectRoleId], references: [id], onDelete: Cascade)
 
   @@unique([projectRoleId, permission])
   @@index([permission])
@@ -405,21 +412,22 @@ model ProjectWorkspace {
   projectId String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
+  
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model Conversation {
-  id        String   @id @default(cuid())
-  projectId String   @unique
+  id        String                @id @default(cuid())
+  projectId String                @unique
   title     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+  
+  project   Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   members   ConversationMember[]
-  messages ConversationMessage[]
+  messages  ConversationMessage[]
 }
+
 model ConversationMember {
   id             String                   @id @default(cuid())
   conversationId String
@@ -429,38 +437,28 @@ model ConversationMember {
   leftAt         DateTime?
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
-
-  conversation   Conversation              @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user           User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  conversation   Conversation             @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, userId])
   @@index([userId, status])
   @@index([conversationId, status])
 }
+
 model ConversationMessage {
   id             String       @id @default(cuid())
   conversationId String
   senderId       String
   content        String       @db.Text
-
   editedAt       DateTime?
   deletedAt      DateTime?
-
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
-
-  conversation   Conversation @relation(
-    fields: [conversationId],
-    references: [id],
-    onDelete: Cascade
-  )
-
-  sender         User         @relation(
-    "ConversationMessageSender",
-    fields: [senderId],
-    references: [id],
-    onDelete: Restrict
-  )
+  
+  // اصلاح اصلی اینجا انجام شده است (تک خطی شدن relation ها)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation("ConversationMessageSender", fields: [senderId], references: [id], onDelete: Restrict)
 
   @@index([conversationId, createdAt, id])
   @@index([senderId, createdAt])
