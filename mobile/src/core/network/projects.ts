@@ -257,6 +257,89 @@ export async function sendConversationMessage(
   return message as ConversationMessage;
 }
 
+// ویرایش پیام توسط نویسنده پیام
+export async function editConversationMessage(
+  projectId: string,
+  messageId: string,
+  content: string
+): Promise<ConversationMessage> {
+  if (!projectId?.trim() || !messageId?.trim()) {
+    throw new Error(
+      'شناسه پروژه یا پیام معتبر نیست. لطفاً دوباره تلاش کنید.'
+    );
+  }
+
+  const normalizedContent = content.trim();
+
+  if (!normalizedContent) {
+    throw new Error('متن پیام نمی‌تواند خالی باشد.');
+  }
+
+  if (normalizedContent.length > 10000) {
+    throw new Error('متن پیام نباید بیشتر از ۱۰۰۰۰ کاراکتر باشد.');
+  }
+
+  const response = await api.patch(
+    `/projects/${encodeURIComponent(projectId)}/conversation/messages/${encodeURIComponent(messageId)}`,
+    {
+      content: normalizedContent,
+    }
+  );
+
+  const message = response.data?.data;
+
+  if (
+    !message ||
+    typeof message.id !== 'string' ||
+    message.id !== messageId ||
+    typeof message.conversationId !== 'string' ||
+    typeof message.content !== 'string' ||
+    typeof message.editedAt !== 'string' ||
+    !message.sender
+  ) {
+    throw new Error(
+      'پیام ویرایش شد اما اطلاعات دریافتی معتبر نیست. تاریخچه گفت‌وگو را تازه‌سازی کنید.'
+    );
+  }
+
+  return message as ConversationMessage;
+}
+
+// حذف منطقی پیام توسط نویسنده پیام
+export async function deleteConversationMessage(
+  projectId: string,
+  messageId: string
+): Promise<ConversationMessage> {
+  if (!projectId?.trim() || !messageId?.trim()) {
+    throw new Error(
+      'شناسه پروژه یا پیام معتبر نیست. لطفاً دوباره تلاش کنید.'
+    );
+  }
+
+  const response = await api.delete(
+    `/projects/${encodeURIComponent(projectId)}/conversation/messages/${encodeURIComponent(messageId)}`
+  );
+
+  const message = response.data?.data;
+
+  if (
+    !message ||
+    typeof message.id !== 'string' ||
+    message.id !== messageId ||
+    typeof message.conversationId !== 'string' ||
+    message.content !== null ||
+    typeof message.deletedAt !== 'string' ||
+    message.isDeleted !== true ||
+    !message.sender
+  ) {
+    throw new Error(
+      'پیام حذف شد اما اطلاعات دریافتی معتبر نیست. تاریخچه گفت‌وگو را تازه‌سازی کنید.'
+    );
+  }
+
+  return message as ConversationMessage;
+}
+
 export async function leaveProjectConversation(
   projectId: string
 ): Promise<void> {
