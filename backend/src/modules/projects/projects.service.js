@@ -1003,6 +1003,20 @@ export async function getProjectConversationMembership({ projectId, userId }) {
 }
 
 async function getActiveConversationAccess({ db, projectId, userId }) {
+  if (
+    !db ||
+    typeof projectId !== 'string' ||
+    !projectId.trim() ||
+    typeof userId !== 'string' ||
+    !userId.trim()
+  ) {
+    throw new AppError(
+      400,
+      'INVALID_CONVERSATION_REQUEST',
+      'اطلاعات پروژه یا کاربر معتبر نیست. صفحه را تازه‌سازی و دوباره تلاش کنید.'
+    );
+  }
+
   const project = await db.project.findFirst({
     where: {
       id: projectId,
@@ -1051,7 +1065,6 @@ async function getActiveConversationAccess({ db, projectId, userId }) {
   }
 
   if (project.conversation.members.length === 0) {
-    // اصلاح پیام راهنما طبق مورد ۴ تصاویر
     throw new AppError(
       403,
       'CONVERSATION_MEMBERSHIP_REQUIRED',
