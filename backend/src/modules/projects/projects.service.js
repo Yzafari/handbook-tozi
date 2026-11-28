@@ -1,3 +1,4 @@
+
 import { randomUUID } from 'node:crypto';
 import prisma from '../../config/database.js';
 import { AppError } from '../../utils/response.util.js';
@@ -439,6 +440,7 @@ export async function getProjectDetail({ projectId, userId }) {
     })),
   };
 }
+
 
 export async function addProjectMember({
   projectId,
@@ -928,6 +930,79 @@ export async function rejoinProjectConversation({ projectId, userId }) {
   });
 }
 
+export async function getProjectConversationMembership({ projectId, userId }) {
+  if (!projectId || !userId) {
+    throw new AppError(
+      400,
+      'INVALID_CONVERSATION_REQUEST',
+      'اطلاعات پروژه یا کاربر ناقص است. صفحه را به‌روزرسانی و دوباره تلاش کنید.'
+    );
+  }
+
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      archivedAt: null,
+      members: {
+        some: {
+          userId,
+          status: 'ACTIVE',
+        },
+      },
+    },
+    select: {
+      id: true,
+      conversation: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    throw new AppError(
+      404,
+      'PROJECT_NOT_FOUND',
+      'پروژه پیدا نشد یا عضویت فعال شما در آن وجود ندارد. ابتدا وضعیت عضویت خود را بررسی کنید.'
+    );
+  }
+
+  if (!project.conversation) {
+    throw new AppError(
+      409,
+      'PROJECT_CONVERSATION_NOT_FOUND',
+      'اتاق گفت‌وگوی این پروژه در دسترس نیست. لطفاً موضوع را به مدیر سامانه گزارش دهید.'
+    );
+  }
+
+  const membership = await prisma.conversationMember.findUnique({
+    where: {
+      conversationId_userId: {
+        conversationId: project.conversation.id,
+        userId,
+      },
+    },
+    select: {
+      status: true,
+      joinedAt: true,
+      leftAt: true,
+    },
+  });
+
+  const status = membership?.status ?? 'LEFT';
+
+  return {
+    projectId: project.id,
+    conversationId: project.conversation.id,
+    status,
+    isMember: status === 'ACTIVE',
+    joinedAt: membership?.joinedAt ?? null,
+    leftAt: membership?.leftAt ?? null,
+    projectMembershipPreserved: true,
+  };
+}
+
 async function getActiveConversationAccess({ db, projectId, userId }) {
   const project = await db.project.findFirst({
     where: {
@@ -987,7 +1062,11 @@ async function getActiveConversationAccess({ db, projectId, userId }) {
   return project.conversation.id;
 }
 
-export async function sendConversationMessage({ projectId, userId, content }) {
+export async function sendConversationMessage({
+  projectId,
+  userId,
+  content,
+}) {
   const normalizedContent = String(content ?? '').trim();
 
   if (!normalizedContent || normalizedContent.length > 10000) {
@@ -1113,7 +1192,7 @@ export async function listConversationMessages({
   const hasMore = messages.length > take;
   const page = hasMore ? messages.slice(0, take) : messages;
 
-  // شناسهٔ قدیمی‌ترین پیام همین صفحه، پیش از معکوس‌سازی محاسبه می‌شود.
+  // شناسه قدیمی‌ترین پیام همین صفحه، پیش از معکوس‌سازی محاسبه می‌شود.
   const nextCursor = hasMore ? page[page.length - 1].id : null;
 
   const items = page
@@ -1127,3 +1206,4 @@ export async function listConversationMessages({
 
   return { items, nextCursor, hasMore };
 }
+
