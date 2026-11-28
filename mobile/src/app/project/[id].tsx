@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,23 +9,15 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {
-  getProjectDetail,
-  getConversationMessages,
-  sendConversationMessage,
-  leaveProjectConversation,
-} from '../../core/network/projects';
 import { useLocalSearchParams } from 'expo-router';
-import { AlertCircle, Users, ShieldCheck, MessageCircle, BriefcaseBusiness } from 'lucide-react-native';
 import {
-  Alert,
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+  AlertCircle,
+  BriefcaseBusiness,
+  MessageCircle,
+  ShieldCheck,
+  Users,
+} from 'lucide-react-native';
+
 import { AppScreen, Card, SectionTitle } from '../../features/common/AppScreen';
 import { useDesignTokens } from '../../core/theme/useDesignTokens';
 import { getUi } from '../../core/theme/gridhandUi';
@@ -33,6 +26,9 @@ import {
   getProjectDetail,
   getConversationMessages,
   sendConversationMessage,
+  leaveProjectConversation,
+  getProjectConversationMembership,
+  rejoinProjectConversation,
 } from '../../core/network/projects';
 
 import type {
@@ -41,24 +37,30 @@ import type {
   ConversationMessage,
 } from '../../core/network/projects';
 
+type ConversationStatus = 'ACTIVE' | 'LEFT';
+
 function errorMessage(
   error: unknown,
-  fallback = 'دریافت اطلاعات پروژه ناموفق بود',
+  fallback = 'عملیات با موفقیت انجام نشد. لطفاً دوباره تلاش کنید.',
 ): string {
   const apiError = error as {
     response?: {
       data?: {
-        message?: string;
+        message?: unknown;
       };
     };
-    message?: string;
   };
 
-  return (
-    apiError?.response?.data?.message ||
-    apiError?.message ||
-    fallback
-  );
+  const serverMessage = apiError?.response?.data?.message;
+
+  if (
+    typeof serverMessage === 'string' &&
+    serverMessage.trim().length > 0
+  ) {
+    return serverMessage;
+  }
+
+  return fallback;
 }
 
 function statusLabel(status: ProjectStatus): string {
@@ -75,6 +77,7 @@ function statusLabel(status: ProjectStatus): string {
 
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const projectId = typeof id === 'string' ? id : '';
 
   const { isDark, textAlign, rowDirection } = useDesignTokens();
   const ui = getUi(isDark);
@@ -82,34 +85,40 @@ export default function ProjectDetailScreen() {
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [conversationLeft, setConversationLeft] = useState(false);
+
+  const [conversationStatus, setConversationStatus] =
+    useState<ConversationStatus | null>(null);
+  const [membershipLoading, setMembershipLoading] = useState(true);
+  const [rejoiningConversation, setRejoiningConversation] = useState(false);
   const [leavingConversation, setLeavingConversation] = useState(false);
+
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [messageDraft, setMessageDraft] = useState('');
-  const [messagesLoading, setMessagesLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(false);
   const [olderMessagesLoading, setOlderMessagesLoading] = useState(false);
   const [messageSending, setMessageSending] = useState(false);
   const [conversationError, setConversationError] = useState('');
-  const [nextMessageCursor, setNextMessageCursor] = useState<string | null>(null);
+  const [nextMessageCursor, setNextMessageCursor] = useState<string | null>(
+    null,
+  );
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
 
-  // --- Refs for lifecycle safety and request tracing ---
   const isMountedRef = useRef(true);
-  const projectIdRef = useRef<string | undefined>(id);
+  const projectIdRef = useRef(projectId);
   const messagesScrollRef = useRef<ScrollView>(null);
   const shouldScrollToEndRef = useRef(false);
 
   useEffect(() => {
     isMountedRef.current = true;
+
     return () => {
       isMountedRef.current = false;
     };
   }, []);
 
-  // Keep latest project id so async callbacks can validate staleness.
   useEffect(() => {
-    projectIdRef.current = id;
-  }, [id]);
+    projectIdRef.current = projectId;
+  }, [projectId]);
 
   const isStale = useCallback(
     (requestedId: string) =>
@@ -118,41 +127,58 @@ export default function ProjectDetailScreen() {
   );
 
   const trimmedDraft = messageDraft.trim();
-  const canSend = !messageSending && trimmedDraft.length > 0;
+  const canSend =
+    conversationStatus === 'ACTIVE' &&
+    !messageSending &&
+    trimmedDraft.length > 0;
 
   const loadDetail = useCallback(async () => {
-    if (!id || typeof id !== 'string') {
-      setError('شناسه پروژه معتبر نیست');
+    if (!projectId) {
+      setError('شناسه پروژه معتبر نیست. لطفاً دوباره وارد صفحه پروژه شوید.');
       setLoading(false);
       return;
     }
 
-    const requestedId = id;
+    const requestedId = projectId;
+
     setLoading(true);
     setError('');
 
     try {
       const result = await getProjectDetail(requestedId);
+
       if (isStale(requestedId)) return;
+
       setProject(result);
     } catch (err) {
       if (isStale(requestedId)) return;
-      setError(errorMessage(err));
+
+      setError(
+        errorMessage(
+          err,
+          'دریافت اطلاعات پروژه ناموفق بود. اتصال اینترنت را بررسی و دوباره تلاش کنید.',
+        ),
+      );
     } finally {
       if (!isStale(requestedId)) {
         setLoading(false);
       }
     }
-  }, [id, isStale]);
-   if (conversationLeft) {
-  return;
-    }
+  }, [projectId, isStale]);
+
   const loadConversationMessages = useCallback(async () => {
-    if (!id || typeof id !== 'string') {
+    if (!projectId) return;
+
+    const requestedId = projectId;
+
+    if (conversationStatus !== 'ACTIVE') {
+      setMessages([]);
+      setNextMessageCursor(null);
+      setHasMoreMessages(false);
+      setMessagesLoading(false);
       return;
     }
 
-    const requestedId = id;
     setMessagesLoading(true);
     setConversationError('');
 
@@ -169,20 +195,71 @@ export default function ProjectDetailScreen() {
       setHasMoreMessages(result.hasMore);
     } catch (err) {
       if (isStale(requestedId)) return;
+
       setConversationError(
-        errorMessage(err, 'دریافت پیام‌های گفت‌وگو ناموفق بود'),
+        errorMessage(
+          err,
+          'دریافت پیام‌های گفت‌وگو ناموفق بود. لطفاً دوباره تلاش کنید.',
+        ),
       );
     } finally {
       if (!isStale(requestedId)) {
         setMessagesLoading(false);
       }
     }
-  }, [id, isStale]);
+  }, [projectId, conversationStatus, isStale]);
+
+  const loadConversationMembership = useCallback(async () => {
+    if (!projectId) {
+      setMembershipLoading(false);
+      setConversationError(
+        'شناسه پروژه معتبر نیست. لطفاً دوباره وارد صفحه پروژه شوید.',
+      );
+      return;
+    }
+
+    const requestedId = projectId;
+
+    setMembershipLoading(true);
+    setConversationError('');
+
+    try {
+      const result = await getProjectConversationMembership(requestedId);
+
+      if (isStale(requestedId)) return;
+
+      if (result?.status !== 'ACTIVE' && result?.status !== 'LEFT') {
+        throw new Error('INVALID_CONVERSATION_MEMBERSHIP_STATUS');
+      }
+
+      setConversationStatus(result.status);
+
+      if (result.status === 'LEFT') {
+        setMessages([]);
+        setNextMessageCursor(null);
+        setHasMoreMessages(false);
+        setMessagesLoading(false);
+      }
+    } catch (err) {
+      if (isStale(requestedId)) return;
+
+      setConversationError(
+        errorMessage(
+          err,
+          'دریافت وضعیت عضویت در گفت‌وگو ناموفق بود. برای بررسی دوباره تلاش کنید.',
+        ),
+      );
+    } finally {
+      if (!isStale(requestedId)) {
+        setMembershipLoading(false);
+      }
+    }
+  }, [projectId, isStale]);
 
   const loadOlderMessages = useCallback(async () => {
     if (
-      !id ||
-      typeof id !== 'string' ||
+      !projectId ||
+      conversationStatus !== 'ACTIVE' ||
       !nextMessageCursor ||
       !hasMoreMessages ||
       olderMessagesLoading
@@ -190,7 +267,8 @@ export default function ProjectDetailScreen() {
       return;
     }
 
-    const requestedId = id;
+    const requestedId = projectId;
+
     setOlderMessagesLoading(true);
     setConversationError('');
 
@@ -207,6 +285,7 @@ export default function ProjectDetailScreen() {
         const older = result.items.filter(
           (item) => !existingIds.has(item.id),
         );
+
         return [...older, ...current];
       });
 
@@ -214,66 +293,157 @@ export default function ProjectDetailScreen() {
       setHasMoreMessages(result.hasMore);
     } catch (err) {
       if (isStale(requestedId)) return;
+
       setConversationError(
-        errorMessage(err, 'دریافت پیام‌های قدیمی‌تر ناموفق بود'),
+        errorMessage(
+          err,
+          'دریافت پیام‌های قدیمی‌تر ناموفق بود. لطفاً دوباره تلاش کنید.',
+        ),
       );
     } finally {
       if (!isStale(requestedId)) {
         setOlderMessagesLoading(false);
       }
     }
-  }, [id, nextMessageCursor, hasMoreMessages, olderMessagesLoading, isStale]);
-      const handleLeaveConversation = useCallback(() => {
-      if (!id || typeof id !== 'string' || leavingConversation) {
-        return;
-      }
-    
-      Alert.alert(
-        'خروج از گفت‌وگوی پروژه',
-        'آیا مطمئن هستید؟ با خروج از گفت‌وگو، دیگر پیام‌های این اتاق را دریافت نمی‌کنید و نمی‌توانید پیام ارسال کنید. عضویت و مجوزهای شما در خود پروژه باقی می‌ماند.',
-        [
-          {
-            text: 'انصراف',
-            style: 'cancel',
-          },
-          {
-            text: 'خروج از گفت‌وگو',
-            style: 'destructive',
-            onPress: async () => {
-              setLeavingConversation(true);
-              setConversationError('');
-    
-              try {
-                await leaveProjectConversation(id);
-    
-                setConversationLeft(true);
-                setMessages([]);
-                setMessageDraft('');
-    
-                Alert.alert(
-                  'خروج موفق',
-                  'از گفت‌وگوی پروژه خارج شدید. عضویت و دسترسی‌های شما در خود پروژه همچنان برقرار است.'
-                );
-              } catch (err) {
-                setConversationError(errorMessage(err));
-              } finally {
+  }, [
+    projectId,
+    conversationStatus,
+    nextMessageCursor,
+    hasMoreMessages,
+    olderMessagesLoading,
+    isStale,
+  ]);
+
+  const handleLeaveConversation = useCallback(() => {
+    if (
+      !projectId ||
+      conversationStatus !== 'ACTIVE' ||
+      leavingConversation
+    ) {
+      return;
+    }
+
+    const requestedId = projectId;
+
+    Alert.alert(
+      'خروج از گفت‌وگوی پروژه',
+      'آیا مطمئن هستید؟ با خروج از گفت‌وگو، دیگر پیام‌های این اتاق را دریافت نمی‌کنید و نمی‌توانید پیام ارسال کنید. عضویت و مجوزهای شما در خود پروژه باقی می‌ماند.',
+      [
+        {
+          text: 'انصراف',
+          style: 'cancel',
+        },
+        {
+          text: 'خروج از گفت‌وگو',
+          style: 'destructive',
+          onPress: async () => {
+            if (!isMountedRef.current) return;
+
+            setLeavingConversation(true);
+            setConversationError('');
+
+            try {
+              await leaveProjectConversation(requestedId);
+
+              if (isStale(requestedId)) return;
+
+              setConversationStatus('LEFT');
+              setMessages([]);
+              setMessageDraft('');
+              setNextMessageCursor(null);
+              setHasMoreMessages(false);
+
+              Alert.alert(
+                'خروج موفق',
+                'از گفت‌وگوی پروژه خارج شدید. عضویت و دسترسی‌های شما در خود پروژه همچنان برقرار است.',
+              );
+            } catch (err) {
+              if (isStale(requestedId)) return;
+
+              setConversationError(
+                errorMessage(
+                  err,
+                  'خروج از گفت‌وگوی پروژه ناموفق بود. لطفاً دوباره تلاش کنید.',
+                ),
+              );
+            } finally {
+              if (!isStale(requestedId)) {
                 setLeavingConversation(false);
               }
-            },
+            }
           },
-        ]
+        },
+      ],
+    );
+  }, [projectId, conversationStatus, leavingConversation, isStale]);
+
+  const handleRejoinConversation = useCallback(async () => {
+    if (
+      !projectId ||
+      conversationStatus !== 'LEFT' ||
+      rejoiningConversation
+    ) {
+      return;
+    }
+
+    const requestedId = projectId;
+
+    setRejoiningConversation(true);
+    setConversationError('');
+
+    try {
+      await rejoinProjectConversation(requestedId);
+
+      if (isStale(requestedId)) return;
+
+      // پس از بازگشت موفق، وضعیت عضویت دوباره از سرور خوانده می‌شود.
+      const membership = await getProjectConversationMembership(requestedId);
+
+      if (isStale(requestedId)) return;
+
+      if (membership?.status !== 'ACTIVE') {
+        throw new Error('CONVERSATION_REJOIN_NOT_CONFIRMED');
+      }
+
+      setMessages([]);
+      setNextMessageCursor(null);
+      setHasMoreMessages(false);
+      setMessageDraft('');
+
+      // با تغییر وضعیت به ACTIVE، هوک useEffect به صورت خودکار تاریخچه پیام‌ها را دریافت می‌کند.
+      setConversationStatus('ACTIVE');
+
+      Alert.alert(
+        'بازگشت موفق',
+        'عضویت شما در گفت‌وگوی پروژه دوباره فعال شد.',
       );
-}, [id, leavingConversation]);
-  if (conversationLeft) {
-  setConversationError(
-    'شما از گفت‌وگوی این پروژه خارج شده‌اید. برای دسترسی مجدد با مدیر پروژه تماس بگیرید.'
-     );
-     return;
-   }  
+    } catch (err) {
+      if (isStale(requestedId)) return;
+
+      setConversationError(
+        errorMessage(
+          err,
+          'بازگشت به گفت‌وگوی پروژه ناموفق بود. اتصال اینترنت را بررسی و دوباره تلاش کنید.',
+        ),
+      );
+    } finally {
+      if (!isStale(requestedId)) {
+        setRejoiningConversation(false);
+      }
+    }
+  }, [projectId, conversationStatus, rejoiningConversation, isStale]);
+
   const handleSendMessage = useCallback(async () => {
-    if (!id || typeof id !== 'string') {
+    if (!projectId) {
       setConversationError(
         'شناسه پروژه معتبر نیست. صفحه پروژه را دوباره باز کنید.',
+      );
+      return;
+    }
+
+    if (conversationStatus !== 'ACTIVE') {
+      setConversationError(
+        'برای ارسال پیام باید عضو فعال گفت‌وگوی پروژه باشید.',
       );
       return;
     }
@@ -281,20 +451,23 @@ export default function ProjectDetailScreen() {
     const content = messageDraft.trim();
 
     if (!content) {
-      setConversationError('متن پیام خالی است. ابتدا پیام خود را بنویسید.');
+      setConversationError(
+        'متن پیام خالی است. ابتدا پیام خود را بنویسید.',
+      );
       return;
     }
 
     if (content.length > 10000) {
-      setConversationError('پیام بیش از ۱۰۰۰۰ کاراکتر است. متن را کوتاه‌تر کنید.');
+      setConversationError(
+        'پیام بیش از ۱۰۰۰۰ کاراکتر است. متن را کوتاه‌تر کنید.',
+      );
       return;
     }
 
-    if (messageSending) {
-      return;
-    }
+    if (messageSending) return;
 
-    const requestedId = id;
+    const requestedId = projectId;
+
     setMessageSending(true);
     setConversationError('');
 
@@ -304,41 +477,64 @@ export default function ProjectDetailScreen() {
       if (isStale(requestedId)) return;
 
       shouldScrollToEndRef.current = true;
+
       setMessages((current) => {
         if (current.some((item) => item.id === message.id)) {
           return current;
         }
+
         return [...current, message];
       });
 
       setMessageDraft('');
     } catch (err) {
       if (isStale(requestedId)) return;
-      setConversationError(errorMessage(err, 'ارسال پیام ناموفق بود'));
+
+      setConversationError(
+        errorMessage(
+          err,
+          'ارسال پیام ناموفق بود. لطفاً اتصال اینترنت را بررسی کنید.',
+        ),
+      );
     } finally {
       if (!isStale(requestedId)) {
         setMessageSending(false);
       }
     }
-  }, [id, messageDraft, messageSending, isStale]);
+  }, [
+    projectId,
+    conversationStatus,
+    messageDraft,
+    messageSending,
+    isStale,
+  ]);
 
-  // Reset conversation state whenever the project id changes (or on mount),
-  // then load the freshest page.
   useEffect(() => {
+    setProject(null);
+    setError('');
+    setLoading(true);
+
+    setConversationStatus(null);
+    setMembershipLoading(true);
     setMessages([]);
+    setMessageDraft('');
+    setMessagesLoading(false);
+    setConversationError('');
     setNextMessageCursor(null);
     setHasMoreMessages(false);
-    setMessageDraft('');
-    setConversationError('');
     setMessageSending(false);
     setOlderMessagesLoading(false);
 
-    void loadConversationMessages();
-  }, [loadConversationMessages]);
-
-  useEffect(() => {
     void loadDetail();
-  }, [loadDetail]);
+    void loadConversationMembership();
+  }, [projectId, loadDetail, loadConversationMembership]);
+
+  // این بخش به صورت خودکار پس از فعال شدن مجدد عضویت، پیام‌ها را لود می‌کند
+  useEffect(() => {
+    if (conversationStatus === 'ACTIVE') {
+      void loadConversationMessages();
+    }
+  }, [conversationStatus, loadConversationMessages]);
 
   return (
     <AppScreen
@@ -386,7 +582,12 @@ export default function ProjectDetailScreen() {
             </Text>
 
             {!!project.description && (
-              <Text style={[styles.description, { color: ui.muted, textAlign }]}>
+              <Text
+                style={[
+                  styles.description,
+                  { color: ui.muted, textAlign },
+                ]}
+              >
                 {project.description}
               </Text>
             )}
@@ -396,11 +597,18 @@ export default function ProjectDetailScreen() {
                 styles.status,
                 {
                   backgroundColor: ui.accentSoft,
-                  alignSelf: textAlign === 'right' ? 'flex-start' : 'flex-end',
+                  alignSelf:
+                    textAlign === 'right' ? 'flex-start' : 'flex-end',
                 },
               ]}
             >
-              <Text style={{ color: ui.accent, fontWeight: '800', fontSize: 11 }}>
+              <Text
+                style={{
+                  color: ui.accent,
+                  fontWeight: '800',
+                  fontSize: 11,
+                }}
+              >
                 {statusLabel(project.status)}
               </Text>
             </View>
@@ -411,13 +619,48 @@ export default function ProjectDetailScreen() {
           </SectionTitle>
 
           <Card ui={ui}>
-            <InfoRow label="نوع پروژه" value={project.type} ui={ui} textAlign={textAlign} />
-            <InfoRow label="استان" value={project.province} ui={ui} textAlign={textAlign} />
-            <InfoRow label="شهرستان" value={project.county} ui={ui} textAlign={textAlign} />
-            <InfoRow label="نشانی" value={project.address} ui={ui} textAlign={textAlign} />
-            <InfoRow label="سازمان" value={project.organizationName} ui={ui} textAlign={textAlign} />
-            <InfoRow label="کارفرما" value={project.employerName} ui={ui} textAlign={textAlign} />
-            <InfoRow label="پیمانکار" value={project.contractorName} ui={ui} textAlign={textAlign} />
+            <InfoRow
+              label="نوع پروژه"
+              value={project.type}
+              ui={ui}
+              textAlign={textAlign}
+            />
+            <InfoRow
+              label="استان"
+              value={project.province}
+              ui={ui}
+              textAlign={textAlign}
+            />
+            <InfoRow
+              label="شهرستان"
+              value={project.county}
+              ui={ui}
+              textAlign={textAlign}
+            />
+            <InfoRow
+              label="نشانی"
+              value={project.address}
+              ui={ui}
+              textAlign={textAlign}
+            />
+            <InfoRow
+              label="سازمان"
+              value={project.organizationName}
+              ui={ui}
+              textAlign={textAlign}
+            />
+            <InfoRow
+              label="کارفرما"
+              value={project.employerName}
+              ui={ui}
+              textAlign={textAlign}
+            />
+            <InfoRow
+              label="پیمانکار"
+              value={project.contractorName}
+              ui={ui}
+              textAlign={textAlign}
+            />
           </Card>
 
           <SectionTitle ui={ui} align={textAlign}>
@@ -435,23 +678,50 @@ export default function ProjectDetailScreen() {
                   key={member.id}
                   style={[
                     styles.member,
-                    { flexDirection: rowDirection, borderBottomColor: ui.border },
+                    {
+                      flexDirection: rowDirection,
+                      borderBottomColor: ui.border,
+                    },
                   ]}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: ui.text, fontWeight: '800', textAlign }}>
+                    <Text
+                      style={{
+                        color: ui.text,
+                        fontWeight: '800',
+                        textAlign,
+                      }}
+                    >
                       {member.user.name || 'کاربر بدون نام'}
                     </Text>
 
                     {!!member.user.jobRole && (
-                      <Text style={{ color: ui.muted, fontSize: 10, marginTop: 3, textAlign }}>
+                      <Text
+                        style={{
+                          color: ui.muted,
+                          fontSize: 10,
+                          marginTop: 3,
+                          textAlign,
+                        }}
+                      >
                         {member.user.jobRole}
                       </Text>
                     )}
                   </View>
 
-                  <View style={[styles.roleTag, { backgroundColor: ui.accentSoft }]}>
-                    <Text style={{ color: ui.accent, fontSize: 10, fontWeight: '800' }}>
+                  <View
+                    style={[
+                      styles.roleTag,
+                      { backgroundColor: ui.accentSoft },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: ui.accent,
+                        fontSize: 10,
+                        fontWeight: '800',
+                      }}
+                    >
                       {member.projectRole.name}
                     </Text>
                   </View>
@@ -466,7 +736,13 @@ export default function ProjectDetailScreen() {
 
           <Card ui={ui}>
             {project.roles.map((role) => (
-              <View key={role.id} style={[styles.roleItem, { borderBottomColor: ui.border }]}>
+              <View
+                key={role.id}
+                style={[
+                  styles.roleItem,
+                  { borderBottomColor: ui.border },
+                ]}
+              >
                 <View style={[styles.row, { flexDirection: rowDirection }]}>
                   <ShieldCheck size={17} color={ui.accent} />
                   <Text style={{ color: ui.text, fontWeight: '800' }}>
@@ -474,7 +750,14 @@ export default function ProjectDetailScreen() {
                   </Text>
                 </View>
 
-                <Text style={{ color: ui.muted, fontSize: 10, marginTop: 5, textAlign }}>
+                <Text
+                  style={{
+                    color: ui.muted,
+                    fontSize: 10,
+                    marginTop: 5,
+                    textAlign,
+                  }}
+                >
                   {role.permissions.length} مجوز تعریف‌شده
                 </Text>
               </View>
@@ -486,37 +769,80 @@ export default function ProjectDetailScreen() {
           </SectionTitle>
 
           <Card ui={ui}>
-            <View style={[styles.infrastructure, { flexDirection: rowDirection }]}>
+            <View
+              style={[
+                styles.infrastructure,
+                { flexDirection: rowDirection },
+              ]}
+            >
               <BriefcaseBusiness size={20} color={ui.accent} />
               <View style={{ flex: 1 }}>
-                <Text style={{ color: ui.text, fontWeight: '800', textAlign }}>
+                <Text
+                  style={{ color: ui.text, fontWeight: '800', textAlign }}
+                >
                   فضای کاری اختصاصی
                 </Text>
-                <Text style={{ color: ui.muted, fontSize: 10, marginTop: 4, textAlign }}>
+                <Text
+                  style={{
+                    color: ui.muted,
+                    fontSize: 10,
+                    marginTop: 4,
+                    textAlign,
+                  }}
+                >
                   {project.workspace?.id || 'فضای کاری ثبت نشده است'}
                 </Text>
               </View>
             </View>
 
-            <View style={[styles.infrastructure, { flexDirection: rowDirection }]}>
+            <View
+              style={[
+                styles.infrastructure,
+                { flexDirection: rowDirection },
+              ]}
+            >
               <MessageCircle size={20} color={ui.accent} />
               <View style={{ flex: 1 }}>
-                <Text style={{ color: ui.text, fontWeight: '800', textAlign }}>
+                <Text
+                  style={{ color: ui.text, fontWeight: '800', textAlign }}
+                >
                   اتاق گفت‌وگوی پروژه
                 </Text>
-                <Text style={{ color: ui.muted, fontSize: 10, marginTop: 4, textAlign }}>
-                  {project.conversation?.title || 'اتاق گفت‌وگو ثبت نشده است'}
+                <Text
+                  style={{
+                    color: ui.muted,
+                    fontSize: 10,
+                    marginTop: 4,
+                    textAlign,
+                  }}
+                >
+                  {project.conversation?.title ||
+                    'اتاق گفت‌وگو ثبت نشده است'}
                 </Text>
               </View>
             </View>
 
-            <View style={[styles.infrastructure, { flexDirection: rowDirection }]}>
+            <View
+              style={[
+                styles.infrastructure,
+                { flexDirection: rowDirection },
+              ]}
+            >
               <Users size={20} color={ui.accent} />
               <View style={{ flex: 1 }}>
-                <Text style={{ color: ui.text, fontWeight: '800', textAlign }}>
+                <Text
+                  style={{ color: ui.text, fontWeight: '800', textAlign }}
+                >
                   سازنده پروژه
                 </Text>
-                <Text style={{ color: ui.muted, fontSize: 10, marginTop: 4, textAlign }}>
+                <Text
+                  style={{
+                    color: ui.muted,
+                    fontSize: 10,
+                    marginTop: 4,
+                    textAlign,
+                  }}
+                >
                   {project.createdBy?.name || 'نامشخص'}
                 </Text>
               </View>
@@ -528,11 +854,11 @@ export default function ProjectDetailScreen() {
           </SectionTitle>
 
           <Card ui={ui}>
-            {messagesLoading ? (
+            {membershipLoading ? (
               <View style={styles.center}>
                 <ActivityIndicator size="small" color={ui.accent} />
                 <Text style={{ color: ui.muted, marginTop: 8 }}>
-                  در حال دریافت پیام‌ها...
+                  در حال بررسی وضعیت عضویت در گفت‌وگو...
                 </Text>
               </View>
             ) : (
@@ -544,210 +870,353 @@ export default function ProjectDetailScreen() {
                       { backgroundColor: ui.accentSoft },
                     ]}
                   >
-                    <Text style={{ color: ui.danger, textAlign, fontSize: 12 }}>
+                    <Text
+                      style={{
+                        color: ui.danger,
+                        textAlign,
+                        fontSize: 12,
+                      }}
+                    >
                       {conversationError}
+                    </Text>
+                  </View>
+                )}
+
+                {conversationStatus === 'LEFT' ? (
+                  <View
+                    style={[
+                      styles.conversationError,
+                      { backgroundColor: ui.accentSoft },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: ui.text,
+                        textAlign,
+                        fontWeight: '800',
+                      }}
+                    >
+                      شما از گفت‌وگوی این پروژه خارج شده‌اید.
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: ui.muted,
+                        textAlign,
+                        marginTop: 5,
+                        fontSize: 11,
+                        lineHeight: 20,
+                      }}
+                    >
+                      عضویت و مجوزهای شما در پروژه همچنان برقرار است.
+                      برای دسترسی مجدد می‌توانید به گفت‌وگو بازگردید.
                     </Text>
 
                     <Pressable
-                      onPress={() => void loadConversationMessages()}
-                      style={styles.retry}
+                      disabled={rejoiningConversation}
+                      onPress={() => void handleRejoinConversation()}
+                      style={[
+                        styles.actionButton,
+                        {
+                          backgroundColor: ui.accent,
+                          opacity: rejoiningConversation ? 0.5 : 1,
+                        },
+                      ]}
                     >
-                      <Text style={{ color: ui.accent, fontWeight: '800' }}>
-                        دریافت مجدد پیام‌ها
+                      {rejoiningConversation ? (
+                        <ActivityIndicator
+                          size="small"
+                          color="#FFFFFF"
+                        />
+                      ) : (
+                        <Text
+                          style={{
+                            color: '#FFFFFF',
+                            fontWeight: '800',
+                          }}
+                        >
+                          بازگشت به گفت‌وگو
+                        </Text>
+                      )}
+                    </Pressable>
+                  </View>
+                ) : conversationStatus === 'ACTIVE' ? (
+                  <>
+                    {messagesLoading ? (
+                      <View style={styles.center}>
+                        <ActivityIndicator
+                          size="small"
+                          color={ui.accent}
+                        />
+                        <Text style={{ color: ui.muted, marginTop: 8 }}>
+                          در حال دریافت پیام‌ها...
+                        </Text>
+                      </View>
+                    ) : (
+                      <>
+                        {!!conversationError && (
+                          <Pressable
+                            onPress={() => void loadConversationMessages()}
+                            style={[
+                              styles.retry,
+                              { backgroundColor: ui.accentSoft },
+                            ]}
+                          >
+                            <Text
+                              style={{
+                                color: ui.accent,
+                                fontWeight: '800',
+                              }}
+                            >
+                              دریافت مجدد پیام‌ها
+                            </Text>
+                          </Pressable>
+                        )}
+
+                        {hasMoreMessages && (
+                          <Pressable
+                            disabled={olderMessagesLoading}
+                            onPress={() => void loadOlderMessages()}
+                            style={[
+                              styles.loadOlder,
+                              { backgroundColor: ui.accentSoft },
+                            ]}
+                          >
+                            {olderMessagesLoading ? (
+                              <ActivityIndicator
+                                size="small"
+                                color={ui.accent}
+                              />
+                            ) : (
+                              <Text
+                                style={{
+                                  color: ui.accent,
+                                  fontWeight: '800',
+                                }}
+                              >
+                                دریافت پیام‌های قدیمی‌تر
+                              </Text>
+                            )}
+                          </Pressable>
+                        )}
+
+                        {messages.length === 0 && !conversationError ? (
+                          <Text
+                            style={{
+                              color: ui.muted,
+                              textAlign: 'center',
+                              paddingVertical: 20,
+                            }}
+                          >
+                            هنوز پیامی در گفت‌وگوی این پروژه ثبت نشده است.
+                            اولین پیام را ارسال کنید.
+                          </Text>
+                        ) : (
+                          <ScrollView
+                            ref={messagesScrollRef}
+                            nestedScrollEnabled
+                            keyboardShouldPersistTaps="handled"
+                            showsVerticalScrollIndicator
+                            style={styles.messagesScroll}
+                            onContentSizeChange={() => {
+                              if (shouldScrollToEndRef.current) {
+                                shouldScrollToEndRef.current = false;
+                                messagesScrollRef.current?.scrollToEnd({
+                                  animated: false,
+                                });
+                              }
+                            }}
+                          >
+                            {messages.map((message) => (
+                              <View
+                                key={message.id}
+                                style={[
+                                  styles.messageItem,
+                                  { borderBottomColor: ui.border },
+                                ]}
+                              >
+                                <View
+                                  style={[
+                                    styles.messageHeader,
+                                    { flexDirection: rowDirection },
+                                  ]}
+                                >
+                                  <Text
+                                    style={{
+                                      color: ui.text,
+                                      fontWeight: '800',
+                                      flex: 1,
+                                      textAlign,
+                                    }}
+                                  >
+                                    {message.sender?.name ||
+                                      'کاربر بدون نام'}
+                                  </Text>
+
+                                  <Text
+                                    style={{
+                                      color: ui.muted,
+                                      fontSize: 10,
+                                    }}
+                                  >
+                                    {new Date(
+                                      message.createdAt,
+                                    ).toLocaleString('fa-IR')}
+                                  </Text>
+                                </View>
+
+                                <Text
+                                  style={{
+                                    color: ui.text,
+                                    textAlign,
+                                    lineHeight: 23,
+                                    marginTop: 7,
+                                  }}
+                                >
+                                  {message.isDeleted || message.deletedAt
+                                    ? 'این پیام حذف شده است.'
+                                    : message.content || ''}
+                                </Text>
+
+                                {!!message.editedAt && (
+                                  <Text
+                                    style={{
+                                      color: ui.muted,
+                                      fontSize: 9,
+                                      textAlign,
+                                      marginTop: 4,
+                                    }}
+                                  >
+                                    ویرایش‌شده
+                                  </Text>
+                                )}
+                              </View>
+                            ))}
+                          </ScrollView>
+                        )}
+                      </>
+                    )}
+
+                    <View
+                      style={[
+                        styles.leaveConversationContainer,
+                        { borderTopColor: ui.border },
+                      ]}
+                    >
+                      <Pressable
+                        disabled={leavingConversation}
+                        onPress={handleLeaveConversation}
+                        style={[
+                          styles.loadOlder,
+                          {
+                            backgroundColor: ui.accentSoft,
+                            marginTop: 12,
+                            marginBottom: 0,
+                            opacity: leavingConversation ? 0.5 : 1,
+                          },
+                        ]}
+                      >
+                        {leavingConversation ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={ui.accent}
+                          />
+                        ) : (
+                          <Text
+                            style={{
+                              color: ui.danger,
+                              fontWeight: '800',
+                            }}
+                          >
+                            خروج از گفت‌وگو
+                          </Text>
+                        )}
+                      </Pressable>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.messageComposer,
+                        {
+                          borderTopColor: ui.border,
+                          flexDirection: rowDirection,
+                        },
+                      ]}
+                    >
+                      <TextInput
+                        value={messageDraft}
+                        onChangeText={setMessageDraft}
+                        placeholder="پیام خود را بنویسید..."
+                        placeholderTextColor={ui.muted}
+                        multiline
+                        maxLength={10000}
+                        editable={!messageSending}
+                        textAlign={textAlign}
+                        style={[
+                          styles.messageInput,
+                          {
+                            color: ui.text,
+                            backgroundColor: ui.background,
+                            borderColor: ui.border,
+                          },
+                        ]}
+                      />
+
+                      <Pressable
+                        disabled={!canSend}
+                        onPress={() => void handleSendMessage()}
+                        style={[
+                          styles.sendButton,
+                          {
+                            backgroundColor: ui.accent,
+                            opacity: canSend ? 1 : 0.5,
+                          },
+                        ]}
+                      >
+                        {messageSending ? (
+                          <ActivityIndicator
+                            size="small"
+                            color="#FFFFFF"
+                          />
+                        ) : (
+                          <Text
+                            style={{
+                              color: '#FFFFFF',
+                              fontWeight: '800',
+                            }}
+                          >
+                            ارسال
+                          </Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.center}>
+                    <Text style={{ color: ui.muted, textAlign }}>
+                      وضعیت عضویت در گفت‌وگو مشخص نیست.
+                    </Text>
+
+                    <Pressable
+                      onPress={() => void loadConversationMembership()}
+                      style={[
+                        styles.retry,
+                        { backgroundColor: ui.accentSoft },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: ui.accent,
+                          fontWeight: '800',
+                        }}
+                      >
+                        بررسی مجدد وضعیت عضویت
                       </Text>
                     </Pressable>
                   </View>
                 )}
-
-                {hasMoreMessages && (
-                  <Pressable
-                    disabled={olderMessagesLoading}
-                    onPress={() => void loadOlderMessages()}
-                    style={[styles.loadOlder, { backgroundColor: ui.accentSoft }]}
-                  >
-                    {olderMessagesLoading ? (
-                      <ActivityIndicator size="small" color={ui.accent} />
-                    ) : (
-                      <Text style={{ color: ui.accent, fontWeight: '800' }}>
-                        دریافت پیام‌های قدیمی‌تر
-                      </Text>
-                    )}
-                  </Pressable>
-                )}
-
-                {messages.length === 0 && !conversationError ? (
-                  <Text
-                    style={{
-                      color: ui.muted,
-                      textAlign: 'center',
-                      paddingVertical: 20,
-                    }}
-                  >
-                    هنوز پیامی در گفت‌وگوی این پروژه ثبت نشده است.
-                    اولین پیام را ارسال کنید.
-                  </Text>
-                ) : (
-                  <ScrollView
-                    ref={messagesScrollRef}
-                    nestedScrollEnabled
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator
-                    style={styles.messagesScroll}
-                    onContentSizeChange={() => {
-                      if (shouldScrollToEndRef.current) {
-                        shouldScrollToEndRef.current = false;
-                        messagesScrollRef.current?.scrollToEnd({ animated: false });
-                      }
-                    }}
-                  >
-                    {messages.map((message) => (
-                      <View
-                        key={message.id}
-                        style={[styles.messageItem, { borderBottomColor: ui.border }]}
-                      >
-                        <View style={[styles.messageHeader, { flexDirection: rowDirection }]}>
-                          <Text
-                            style={{
-                              color: ui.text,
-                              fontWeight: '800',
-                              flex: 1,
-                              textAlign,
-                            }}
-                          >
-                            {message.sender?.name || 'کاربر بدون نام'}
-                          </Text>
-
-                          <Text style={{ color: ui.muted, fontSize: 10 }}>
-                            {new Date(message.createdAt).toLocaleString('fa-IR')}
-                          </Text>
-                        </View>
-
-                        <Text
-                          style={{
-                            color: ui.text,
-                            textAlign,
-                            lineHeight: 23,
-                            marginTop: 7,
-                          }}
-                        >
-                          {message.isDeleted || message.deletedAt
-                            ? 'این پیام حذف شده است.'
-                            : message.content || ''}
-                        </Text>
-
-                        {!!message.editedAt && (
-                          <Text
-                            style={{
-                              color: ui.muted,
-                              fontSize: 9,
-                              textAlign,
-                              marginTop: 4,
-                            }}
-                          >
-                            ویرایش‌شده
-                          </Text>
-                        )}
-                      </View>
-                    ))}
-                  </ScrollView>
-                )}
               </>
             )}
-
-            <View
-              {conversationLeft ? (
-                <View
-                  style={[
-                    styles.conversationError,
-                    { backgroundColor: ui.accentSoft },
-                  ]}
-                >
-                  <Text style={{ color: ui.text, textAlign }}>
-                    شما از گفت‌وگوی این پروژه خارج شده‌اید.
-                  </Text>
-              
-                  <Text
-                    style={{
-                      color: ui.muted,
-                      textAlign,
-                      marginTop: 5,
-                      fontSize: 11,
-                    }}
-                  >
-                    عضویت و مجوزهای شما در پروژه همچنان برقرار است.
-                    برای دسترسی مجدد با مدیر پروژه تماس بگیرید.
-                  </Text>
-                </View>
-              ) : (
-                <Pressable
-                  disabled={leavingConversation}
-                  onPress={handleLeaveConversation}
-                  style={[
-                    styles.loadOlder,
-                    {
-                      backgroundColor: ui.accentSoft,
-                      marginTop: 12,
-                      opacity: leavingConversation ? 0.5 : 1,
-                    },
-                  ]}
-                >
-                  {leavingConversation ? (
-                    <ActivityIndicator size="small" color={ui.accent} />
-                  ) : (
-                    <Text style={{ color: ui.danger, fontWeight: '800' }}>
-                      خروج از گفت‌وگو
-                    </Text>
-                  )}
-                </Pressable>
-              )}
-              style={[
-                styles.messageComposer,
-                { borderTopColor: ui.border, flexDirection: rowDirection },
-              ]}
-            >
-              <TextInput
-                value={messageDraft}
-                onChangeText={setMessageDraft}
-                placeholder="پیام خود را بنویسید..."
-                placeholderTextColor={ui.muted}
-                multiline
-                maxLength={10000}
-                editable={!messageSending && !conversationLeft}
-                textAlign={textAlign}
-                style={[
-                  styles.messageInput,
-                  {
-                    color: ui.text,
-                    backgroundColor: ui.background,
-                    borderColor: ui.border,
-                  },
-                ]}
-              />
-
-              <Pressable
-               disabled={
-                conversationLeft ||
-                messageSending ||
-                !messageDraft.trim()
-                  }
-                onPress={() => void handleSendMessage()}
-                style={[
-                  styles.sendButton,
-                  {
-                    backgroundColor: ui.accent,
-                    opacity: canSend ? 1 : 0.5,
-                  },
-                ]}
-              >
-                {messageSending ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>
-                    ارسال
-                  </Text>
-                )}
-              </Pressable>
-            </View>
           </Card>
         </>
       )}
@@ -773,7 +1242,14 @@ function InfoRow({
       <Text style={{ color: ui.muted, fontSize: 11, textAlign }}>
         {label}
       </Text>
-      <Text style={{ color: ui.text, fontSize: 12, fontWeight: '700', textAlign }}>
+      <Text
+        style={{
+          color: ui.text,
+          fontSize: 12,
+          fontWeight: '700',
+          textAlign,
+        }}
+      >
         {value}
       </Text>
     </View>
@@ -856,9 +1332,57 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 12,
   },
+  actionButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 10,
+    marginTop: 14,
+  },
+  leaveConversationContainer: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: 12,
+    paddingTop: 2,
+  },
   messagesScroll: {
     maxHeight: 360,
   },
+  messageItem: {
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  messageHeader: {
+    alignItems: 'center',
+    gap: 10,
+  },
+  messageComposer: {
+    alignItems: 'flex-end',
+    gap: 8,
+    paddingTop: 14,
+    marginTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  messageInput: {
+    flex: 1,
+    minHeight: 44,
+    maxHeight: 120,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontSize: 12,
+  },
+  sendButton: {
+    minWidth: 62,
+    minHeight: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+});,
   messageItem: {
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
