@@ -29,8 +29,8 @@ const createProjectSchema = z.object({
   county: z.string().trim().max(100).optional().nullable(),
   address: z.string().trim().max(1000).optional().nullable(),
 
-  latitude: z.number().min(-90).max(90).optional().nullable(),
-  longitude: z.number().min(-180).max(180).optional().nullable(),
+  latitude: z.coerce.number().min(-90).max(90).optional().nullable(),
+  longitude: z.coerce.number().min(-180).max(180).optional().nullable(),
 }).superRefine((data, ctx) => {
   if (
     data.startDate &&
@@ -65,7 +65,19 @@ const idParamsSchema = z.object({
   id: z.string().trim().min(1).max(128),
 });
 
+const conversationMessageParamsSchema = z.object({
+  id: z.string().trim().min(1).max(128),
+  messageId: z.string().trim().min(1).max(128),
+});
+
 const sendConversationMessageSchema = z.object({
+  content: z.string()
+    .trim()
+    .min(1, 'متن پیام نمی‌تواند خالی باشد')
+    .max(10000, 'متن پیام نمی‌تواند بیشتر از ۱۰۰۰۰ کاراکتر باشد'),
+});
+
+const editConversationMessageSchema = z.object({
   content: z.string()
     .trim()
     .min(1, 'متن پیام نمی‌تواند خالی باشد')
@@ -146,7 +158,7 @@ router.post(
   controller.rejoinConversation
 );
 
-// --- اصلاحیه: اضافه کردن validate({ params: idParamsSchema }) برای هماهنگی با سایر روت‌ها ---
+// دریافت وضعیت عضویت گفت‌وگو
 router.get(
   '/:id/conversation/membership',
   validate({ params: idParamsSchema }),
@@ -172,6 +184,27 @@ router.get(
   }),
   requireProjectPermission('conversation:read'),
   controller.listConversationMessages
+);
+
+// ویرایش پیام گفت‌وگو (مطابق با داکیومنت عکس)
+router.patch(
+  '/:id/conversation/messages/:messageId',
+  validate({
+    params: conversationMessageParamsSchema,
+    body: editConversationMessageSchema,
+  }),
+  requireProjectPermission('conversation:read'),
+  controller.editConversationMessage
+);
+
+// حذف منطقی پیام گفت‌وگو (مطابق با داکیومنت عکس)
+router.delete(
+  '/:id/conversation/messages/:messageId',
+  validate({
+    params: conversationMessageParamsSchema,
+  }),
+  requireProjectPermission('conversation:read'),
+  controller.deleteConversationMessage
 );
 
 export default router;
