@@ -134,3 +134,18 @@ export const listConversationMessages = asyncHandler(async (req, res) => {
     }
   );
 });
+
+//    دریافت وضعیت عضویت گفت‌وگو
+export const getConversationMembership = asyncHandler(async (req, res) => {
+  const membership = await service.getProjectConversationMembership({
+    projectId: req.params.id,
+    userId: req.user.id,
+  });
+
+  return ok(
+    res,
+    membership,
+    'وضعیت عضویت در گفت‌وگوی پروژه با موفقیت دریافت شد'
+  );
+});
+
