@@ -1156,7 +1156,7 @@ export default function ProjectDetailScreen() {
                           styles.messageInput,
                           {
                             color: ui.text,
-                            backgroundColor: ui.background,
+                            backgroundColor: ui.bg,
                             borderColor: ui.border,
                           },
                         ]}
