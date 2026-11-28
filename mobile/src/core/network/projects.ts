@@ -348,6 +348,21 @@ export async function leaveProjectConversation(
   );
 }
 
+// بازگشت به گفت‌وگوی پروژه پس از خروج
+export async function rejoinProjectConversation(
+  projectId: string
+): Promise<void> {
+  if (!projectId?.trim()) {
+    throw new Error(
+      'شناسه پروژه معتبر نیست. لطفاً دوباره وارد صفحه پروژه شوید.'
+    );
+  }
+
+  await api.post(
+    `/projects/${encodeURIComponent(projectId)}/conversation/rejoin`
+  );
+}
+
 // دریافت وضعیت واقعی عضویت کاربر در گفت‌وگوی پروژه از سرور
 export async function getProjectConversationMembership(
   projectId: string
