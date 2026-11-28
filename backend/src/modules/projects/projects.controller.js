@@ -135,7 +135,7 @@ export const listConversationMessages = asyncHandler(async (req, res) => {
   );
 });
 
-//    دریافت وضعیت عضویت گفت‌وگو
+// دریافت وضعیت عضویت گفت‌وگو
 export const getConversationMembership = asyncHandler(async (req, res) => {
   const membership = await service.getProjectConversationMembership({
     projectId: req.params.id,
@@ -149,3 +149,33 @@ export const getConversationMembership = asyncHandler(async (req, res) => {
   );
 });
 
+// ویرایش پیام گفت‌وگو (مطابق با داکیومنت عکس)
+export const editConversationMessage = asyncHandler(async (req, res) => {
+  const message = await service.editConversationMessage({
+    projectId: req.params.id,
+    userId: req.user.id,
+    messageId: req.params.messageId,
+    content: req.body.content,
+  });
+
+  return ok(
+    res,
+    message,
+    'پیام شما با موفقیت ویرایش شد'
+  );
+});
+
+// حذف منطقی پیام گفت‌وگو (مطابق با داکیومنت عکس)
+export const deleteConversationMessage = asyncHandler(async (req, res) => {
+  const message = await service.deleteConversationMessage({
+    projectId: req.params.id,
+    userId: req.user.id,
+    messageId: req.params.messageId,
+  });
+
+  return ok(
+    res,
+    message,
+    'پیام شما با موفقیت حذف شد'
+  );
+});
